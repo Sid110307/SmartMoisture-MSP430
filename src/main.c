@@ -72,6 +72,40 @@
 
 static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
 static volatile uint8_t bleRxHead = 0;
+static uint8_t bleIrqPrevLevel = 0, bleConnected = 0;
+
+static const uint8_t font5x7[][5] = {
+	{0x00, 0x00, 0x00, 0x00, 0x00}, // ' '
+	{0x3E, 0x51, 0x49, 0x45, 0x3E}, // '0'
+	{0x00, 0x42, 0x7F, 0x40, 0x00}, // '1'
+	{0x42, 0x61, 0x51, 0x49, 0x46}, // '2'
+	{0x21, 0x41, 0x45, 0x4B, 0x31}, // '3'
+	{0x18, 0x14, 0x12, 0x7F, 0x10}, // '4'
+	{0x27, 0x45, 0x45, 0x45, 0x39}, // '5'
+	{0x3C, 0x4A, 0x49, 0x49, 0x30}, // '6'
+	{0x01, 0x71, 0x09, 0x05, 0x03}, // '7'
+	{0x36, 0x49, 0x49, 0x49, 0x36}, // '8'
+	{0x06, 0x49, 0x49, 0x29, 0x1E}, // '9'
+	{0x00, 0x60, 0x60, 0x00, 0x00}, // '.'
+	{0x00, 0x36, 0x36, 0x00, 0x00}, // ':'
+	{0x04, 0x04, 0x7F, 0x04, 0x04}, // 'T'
+	{0x7F, 0x02, 0x0C, 0x02, 0x7F}, // 'M'
+	{0x3E, 0x41, 0x41, 0x41, 0x22}, // 'C'
+	{0x61, 0x13, 0x08, 0x64, 0x13}, // '%'
+};
+
+static uint8_t fontIndexForChar(const char c)
+{
+	if (c == ' ') return 0;
+	if (c >= '0' && c <= '9') return (uint8_t)(1 + (c - '0'));
+	if (c == '.') return 11;
+	if (c == ':') return 12;
+	if (c == 'T') return 13;
+	if (c == 'M') return 14;
+	if (c == 'C') return 15;
+	if (c == '%') return 16;
+	return 0;
+}
 
 static void delayCyclesUl(unsigned long n)
 {
@@ -216,7 +250,7 @@ static void maxInit(void)
 	(void)maxReadReg(MAX_REG_FAULT);
 }
 
-static uint16_t maxReadRtdRaw(void)
+static float maxReadRtdTemp(void)
 {
 	uint8_t buf[2];
 	if (!maxWaitDrdy())
@@ -230,10 +264,8 @@ static uint16_t maxReadRtdRaw(void)
 	uint16_t raw = (uint16_t)buf[0] << 8 | buf[1];
 	raw >>= 1;
 
-	return raw;
+	return (float)raw / 32.0f - 256.0f;;
 }
-
-static float maxRtdCodeToTemp(const uint16_t code) { return (float)code / 32.0f - 256.0f; }
 
 static void adcInit(void)
 {
@@ -358,16 +390,41 @@ static void oledInit(void)
 	oledSendCommand(0xAF);
 }
 
-static void oledClear(void)
+static void oledSetCursor(const uint8_t col, const uint8_t page)
 {
 	oledSendCommand(0x21);
-	oledSendCommand(0x00);
+	oledSendCommand(col);
 	oledSendCommand(0x7F);
 	oledSendCommand(0x22);
-	oledSendCommand(0x00);
+	oledSendCommand(page);
 	oledSendCommand(0x07);
+}
 
+static void oledClear(void)
+{
+	oledSetCursor(0, 0);
 	for (uint16_t i = 0; i < 1024; ++i) oledSendData(0x00);
+}
+
+static void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
+{
+	const uint8_t idx = fontIndexForChar(c);
+	const uint8_t* glyph = font5x7[idx];
+
+	oledSetCursor(col, page);
+	for (uint8_t i = 0; i < 5; ++i) oledSendData(glyph[i]);
+	oledSendData(0x00);
+}
+
+static void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
+{
+	uint8_t x = col;
+
+	while (*s && x < 128)
+	{
+		oledDrawChar(x, page, *s++);
+		x += 6;
+	}
 }
 
 static void gpioInit(void)
@@ -387,6 +444,9 @@ static void gpioInit(void)
 	BLE_IRQ_DIR &= ~BLE_IRQ_PIN;
 	BLE_IRQ_REN |= BLE_IRQ_PIN;
 	BLE_IRQ_OUT &= ~BLE_IRQ_PIN;
+
+	bleIrqPrevLevel = (BLE_IRQ_PORT & BLE_IRQ_PIN) ? 1u : 0u;
+	bleConnected = bleIrqPrevLevel;
 }
 
 static void bleUartInit(void)
@@ -410,10 +470,8 @@ static void blePrintChar(const char c)
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
 
-static void bleSendMeasurement(const float tempC, const uint16_t adcRaw)
+static void bleSendMeasurement(const float tempC, const float moisturePercent)
 {
-	const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
-
 	char buf[32];
 	const int n = snprintf(buf, sizeof(buf), "Temp:%.2f;Moisture:%.2f\r\n", tempC, moisturePercent);
 	if (n <= 0) return;
@@ -478,6 +536,17 @@ int main(void)
 
 	while (1)
 	{
+		const uint8_t irqLevel = (BLE_IRQ_PORT & BLE_IRQ_PIN) ? 1u : 0u;
+
+		if (irqLevel != bleIrqPrevLevel)
+		{
+			bleIrqPrevLevel = irqLevel;
+			bleConnected = irqLevel;
+
+			LED_PORT ^= LED_PIN;
+			delayCyclesUl(50000);
+		}
+
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
 		{
@@ -491,11 +560,16 @@ int main(void)
 		}
 
 		const uint16_t adcRaw = adcReadRaw();
-		const uint16_t code = maxReadRtdRaw();
-		const float tDegC = maxRtdCodeToTemp(code);
+		const float tDegC = maxReadRtdTemp();
+		const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
 
-		(void)code;
-		bleSendMeasurement(tDegC, adcRaw);
+		char line1[16], line2[16];
+		bleSendMeasurement(tDegC, moisturePercent);
+
+		snprintf(line1, sizeof(line1), "T:%.1fC", tDegC);
+		snprintf(line2, sizeof(line2), "M:%.0f%%", moisturePercent);
+		oledDrawString(0, 0, line1);
+		oledDrawString(0, 1, line2);
 
 		LED_PORT ^= LED_PIN;
 		delayCyclesUl(200000);
