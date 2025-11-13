@@ -116,7 +116,7 @@ static void maxWriteReg(const uint8_t regAddr, const uint8_t value)
 {
 	maxCsLow();
 
-	(void)maxSpiTransfer(0x80 | regAddr & 0x7F);
+	(void)maxSpiTransfer(0x80 | (regAddr & 0x7F));
 	(void)maxSpiTransfer(value);
 
 	maxCsHigh();
@@ -157,9 +157,14 @@ static void maxInit(void)
 static uint16_t maxReadRtdRaw(void)
 {
 	uint8_t buf[2];
-	maxWaitDrdy();
-	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
+	if (!maxWaitDrdy())
+		while (1)
+		{
+			LED_PORT ^= LED_PIN;
+			delayCyclesUl(200000);
+		}
 
+	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
 	uint16_t raw = (uint16_t)buf[0] << 8 | buf[1];
 	raw >>= 1;
 
@@ -185,21 +190,13 @@ int main(void)
 
 	while (1)
 	{
-		if (!maxWaitDrdy())
-		{
-			LED_PORT ^= LED_PIN;
-			delayCyclesUl(200000);
-
-			return 0;
-		}
-
 		const uint8_t fault = maxReadFault();
 		if (fault != 0)
 		{
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(50000);
 
-			maxWriteReg(MAX_REG_CONF, 0xD1 | 1 << 1);
+			maxWriteReg(MAX_REG_CONF, 0xD1 | (1 << 1));
 			maxWriteReg(MAX_REG_CONF, 0xD1);
 
 			continue;
