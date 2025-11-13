@@ -1,0 +1,25 @@
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR msp430)
+
+set(MSP430_GCC_ROOT "C:/Progra~1/TI/MSP430-GCC")
+set(MSP430_MCU "msp430f5529")
+
+set(CMAKE_C_COMPILER "${MSP430_GCC_ROOT}/bin/msp430-elf-gcc.exe")
+set(CMAKE_CXX_COMPILER "${MSP430_GCC_ROOT}/bin/msp430-elf-g++.exe")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+set(MSP430_GCC_INCLUDE_DIR "${MSP430_GCC_ROOT}/include")
+set(MSP430_GCC_LIB_DIR "${MSP430_GCC_ROOT}/msp430-elf/lib")
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+set(MSP430_COMMON_CFLAGS "-mmcu=${MSP430_MCU} -I\"${MSP430_GCC_INCLUDE_DIR}\" -Os -ffunction-sections -fdata-sections \
+                        -fno-builtin -Wall -Wextra -Wpedantic")
+set(CMAKE_C_FLAGS_INIT "${MSP430_COMMON_CFLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${MSP430_COMMON_CFLAGS} -fno-exceptions -fno-rtti")
+set(LINKER_SCRIPT "${MSP430_GCC_INCLUDE_DIR}/${MSP430_MCU}.ld")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-mmcu=${MSP430_MCU} -Wl,-gc-sections -L\"${MSP430_GCC_LIB_DIR}\" \
+                        -L\"${MSP430_GCC_INCLUDE_DIR}\" -T\"${LINKER_SCRIPT}\"")
+
+set(CMAKE_SHARED_LINKER_FLAGS_INIT "")
+set(CMAKE_MODULE_LINKER_FLAGS_INIT "")

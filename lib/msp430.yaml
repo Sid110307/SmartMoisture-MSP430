@@ -1,0 +1,61 @@
+compilers:
+  - description: C11 MSP430 GCC
+    match-sources: ".*\\.c"
+    match-language: C
+    match-compiler-exe: "(.*/)?msp430-elf-gcc(\\.exe)?"
+    code-insight-target-name: msp430-gcc
+    include-dirs:
+      - "${compiler-exe-dir}/../msp430-elf/include"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include-fixed"
+    defines-text: "
+#define __MSP430__ 1
+#define __MSP430F5529__ 1
+#define __GNUC__ 9
+#define __GNUC_MINOR__ 3
+#define __GNUC_PATCHLEVEL__ 1
+#define __VERSION__ \"9.3.1\"
+#define __STDC__ 1
+/* C11: */
+#define __STDC_VERSION__ 201112L
+#define __STDC_HOSTED__ 1
+#define __ELF__ 1
+#define __CHAR_BIT__ 8
+#define __SIZEOF_INT__ 2
+#define __SIZEOF_LONG__ 4
+#define __SIZEOF_POINTER__ 2
+#define __ORDER_LITTLE_ENDIAN__ 1234
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+"
+  - description: CPP14 MSP430 GCC
+    match-sources: ".*\\.cpp"
+    match-language: CPP
+    match-compiler-exe: "(.*/)?msp430-elf-g\\+\\+(\\.exe)?"
+    code-insight-target-name: msp430-gcc
+    include-dirs:
+      - "${compiler-exe-dir}/../msp430-elf/include"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include-fixed"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include/c++"
+      - "${compiler-exe-dir}/../lib/gcc/msp430-elf/9.3.1/include/c++/msp430-elf"
+    defines-text: "
+#define __MSP430__ 1
+#define __MSP430F5529__ 1
+#define __GNUC__ 9
+#define __GNUC_MINOR__ 3
+#define __GNUC_PATCHLEVEL__ 1
+#define __VERSION__ \"9.3.1\"
+#define __STDC__ 1
+/* C11: */
+#define __STDC_VERSION__ 201112L
+#define __STDC_HOSTED__ 1
+#define __ELF__ 1
+#define __CHAR_BIT__ 8
+#define __SIZEOF_INT__ 2
+#define __SIZEOF_LONG__ 4
+#define __SIZEOF_POINTER__ 2
+#define __ORDER_LITTLE_ENDIAN__ 1234
+#define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+/* C++14: */
+#define __cplusplus 201402L
+"
