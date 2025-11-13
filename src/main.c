@@ -1,5 +1,6 @@
-#include <msp430.h>
+#include <stdio.h>
 #include <stdint.h>
+#include <msp430.h>
 
 #define MAX_CS_PORT P2OUT
 #define MAX_CS_DIR P2DIR
@@ -46,6 +47,31 @@
 #define LED_PORT P1OUT
 #define LED_DIR P1DIR
 #define LED_PIN BIT7
+
+#define BLE_WAKE_PORT P2OUT
+#define BLE_WAKE_DIR P2DIR
+#define BLE_WAKE_PIN BIT2
+
+#define BLE_RESET_PORT P3OUT
+#define BLE_RESET_DIR P3DIR
+#define BLE_RESET_PIN BIT0
+
+#define BLE_IRQ_PORT P3IN
+#define BLE_IRQ_DIR P3DIR
+#define BLE_IRQ_REN P3REN
+#define BLE_IRQ_OUT P3OUT
+#define BLE_IRQ_PIN BIT1
+
+#define BLE_PWR_PORT P2OUT
+#define BLE_PWR_DIR P2DIR
+#define BLE_PWR_PIN BIT7
+
+#define BLE_TXSEL_BIT BIT5
+#define BLE_RXSEL_BIT BIT4
+#define BLE_RX_BUFFER_SIZE 64
+
+static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
+static volatile uint8_t bleRxHead = 0;
 
 static void delayCyclesUl(unsigned long n)
 {
@@ -172,7 +198,7 @@ static void maxReadMulti(const uint8_t startAddr, uint8_t* buf, const uint8_t le
 
 static uint8_t maxWaitDrdy(void)
 {
-	unsigned long count = 1000000UL;
+	unsigned long count = 4000000UL;
 
 	while (MAX_DRDY_PORT & MAX_DRDY_PIN && count--);
 	return count != 0;
@@ -207,8 +233,7 @@ static uint16_t maxReadRtdRaw(void)
 	return raw;
 }
 
-static float maxRtdCodeToResistance(const uint16_t code) { return (float)code * 430.0f / 32768.0f; }
-static float maxRtdCodeToTempApprox(const uint16_t code) { return (float)code / 32.0f - 256.0f; }
+static float maxRtdCodeToTemp(const uint16_t code) { return (float)code / 32.0f - 256.0f; }
 
 static void adcInit(void)
 {
@@ -352,6 +377,77 @@ static void gpioInit(void)
 
 	P1SEL0 &= ~(OLED_SCL_PIN | OLED_SDA_PIN | LED_PIN);
 	P1SEL1 &= ~(OLED_SCL_PIN | OLED_SDA_PIN | LED_PIN);
+
+	BLE_PWR_DIR |= BLE_PWR_PIN;
+	BLE_PWR_PORT |= BLE_PWR_PIN;
+	BLE_WAKE_DIR |= BLE_WAKE_PIN;
+	BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
+	BLE_RESET_DIR |= BLE_RESET_PIN;
+	BLE_RESET_PORT |= BLE_RESET_PIN;
+	BLE_IRQ_DIR &= ~BLE_IRQ_PIN;
+	BLE_IRQ_REN |= BLE_IRQ_PIN;
+	BLE_IRQ_OUT &= ~BLE_IRQ_PIN;
+}
+
+static void bleUartInit(void)
+{
+	P1SEL0 |= (BLE_RXSEL_BIT | BLE_TXSEL_BIT);
+	P1SEL1 &= ~(BLE_RXSEL_BIT | BLE_TXSEL_BIT);
+
+	UCA0CTLW0 = UCSWRST;
+	UCA0CTLW0 |= UCSSEL__SMCLK;
+
+	UCA0BRW = 6;
+	UCA0MCTLW = UCOS16 | UCBRF_8 | 0x20;
+	UCA0CTLW0 &= ~UCSWRST;
+}
+
+static void blePrintChar(const char c)
+{
+	while (!(UCA0IFG & UCTXIFG));
+	UCA0TXBUF = (uint8_t)c;
+}
+
+static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
+
+static void bleSendMeasurement(const float tempC, const uint16_t adcRaw)
+{
+	const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
+
+	char buf[32];
+	const int n = snprintf(buf, sizeof(buf), "Temp:%.2f;Moisture:%.2f\r\n", tempC, moisturePercent);
+	if (n <= 0) return;
+
+	blePrintString(buf);
+}
+
+static uint8_t bleRxContains(const char* pattern)
+{
+	const uint8_t len = bleRxHead;
+	uint8_t patLen = 0;
+
+	while (pattern[patLen] != '\0') patLen++;
+	if (len < patLen) return 0;
+
+	for (uint8_t i = 0; i + patLen <= len; ++i)
+	{
+		uint8_t j = 0;
+
+		while (j < patLen && bleRxBuffer[i + j] == pattern[j]) j++;
+		if (j == patLen) return 1;
+	}
+	return 0;
+}
+
+static uint8_t bleSendCommand(const char* cmd, const char* expect, const unsigned long timeoutCycles)
+{
+	bleRxHead = 0;
+	blePrintString(cmd);
+
+	unsigned long count = timeoutCycles;
+	while (count--) if (bleRxContains(expect)) return 1;
+
+	return 0;
 }
 
 int main(void)
@@ -362,8 +458,23 @@ int main(void)
 	gpioInit();
 	maxInit();
 	adcInit();
+	bleUartInit();
 	oledInit();
 	oledClear();
+
+	UCA0IE |= UCRXIE;
+	__enable_interrupt();
+
+	BLE_WAKE_PORT |= BLE_WAKE_PIN;
+	if (!bleSendCommand("AT\r\n", "OK", 200000UL))
+		while (1)
+		{
+			LED_PORT ^= LED_PIN;
+			delayCyclesUl(50000);
+		}
+
+	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", 200000UL);
+	bleSendCommand("AT+BAUD\r\n", "OK", 200000UL);
 
 	while (1)
 	{
@@ -379,17 +490,30 @@ int main(void)
 			continue;
 		}
 
-		const uint16_t code = maxReadRtdRaw();
-		const float rOhms = maxRtdCodeToResistance(code);
-		const float tDegC = maxRtdCodeToTempApprox(code);
 		const uint16_t adcRaw = adcReadRaw();
+		const uint16_t code = maxReadRtdRaw();
+		const float tDegC = maxRtdCodeToTemp(code);
 
-		(void)rOhms;
-		(void)tDegC;
 		(void)code;
-		(void)adcRaw;
+		bleSendMeasurement(tDegC, adcRaw);
 
 		LED_PORT ^= LED_PIN;
 		delayCyclesUl(200000);
+	}
+}
+
+#pragma vector = USCI_A0_VECTOR
+__interrupt void USCI_A0_ISR(void)
+{
+	if (UCA0IFG & UCRXIFG)
+	{
+		const char c = (char)UCA0RXBUF;
+		const uint8_t next = (uint8_t)((bleRxHead + 1u) % BLE_RX_BUFFER_SIZE);
+
+		if (next != 0)
+		{
+			bleRxBuffer[bleRxHead] = c;
+			bleRxHead = next;
+		}
 	}
 }
