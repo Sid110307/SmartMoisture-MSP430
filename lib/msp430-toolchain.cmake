@@ -2,7 +2,7 @@ set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR msp430)
 
 set(MSP430_GCC_ROOT "C:/Progra~1/TI/MSP430-GCC")
-set(MSP430_MCU "msp430f5529")
+set(MSP430_MCU "msp430fr2433")
 
 set(CMAKE_C_COMPILER "${MSP430_GCC_ROOT}/bin/msp430-elf-gcc.exe")
 set(CMAKE_CXX_COMPILER "${MSP430_GCC_ROOT}/bin/msp430-elf-g++.exe")

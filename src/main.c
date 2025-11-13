@@ -28,6 +28,15 @@
 #define MAX_REG_RTD_LSB 0x02
 #define MAX_REG_FAULT 0x07
 
+#define OLED_SCL_PORT P1OUT
+#define OLED_SCL_DIR P1DIR
+#define OLED_SCL_PIN BIT2
+
+#define OLED_SDA_PORT P1OUT
+#define OLED_SDA_DIR P1DIR
+#define OLED_SDA_PIN BIT3
+#define OLED_SDA_IN P1IN
+
 #define LED_PORT P1OUT
 #define LED_DIR P1DIR
 #define LED_PIN BIT7
@@ -43,6 +52,29 @@ static void delayCyclesUl(unsigned long n)
 }
 
 static void spiDelay(void) { delayCyclesUl(10); }
+static void i2cDelay(void) { delayCyclesUl(20); }
+
+static void i2cSclLow(void)
+{
+	OLED_SCL_DIR |= OLED_SCL_PIN;
+	OLED_SCL_PORT &= ~OLED_SCL_PIN;
+}
+
+static void i2cSclHigh(void)
+{
+	OLED_SCL_DIR &= ~OLED_SCL_PIN;
+}
+
+static void i2cSdaLow(void)
+{
+	OLED_SDA_DIR |= OLED_SDA_PIN;
+	OLED_SDA_PORT &= ~OLED_SDA_PIN;
+}
+
+static void i2cSdaHigh(void)
+{
+	OLED_SDA_DIR &= ~OLED_SDA_PIN;
+}
 
 static void maxSpiInitPins(void)
 {
@@ -104,8 +136,8 @@ static void maxCsHigh(void)
 static uint8_t maxReadReg(const uint8_t regAddr)
 {
 	maxCsLow();
-	(void)maxSpiTransfer(regAddr & 0x7F);
 
+	(void)maxSpiTransfer(regAddr & 0x7F);
 	const uint8_t value = maxSpiTransfer(0x00);
 	maxCsHigh();
 
@@ -172,59 +204,160 @@ static uint16_t maxReadRtdRaw(void)
 static float maxRtdCodeToResistance(const uint16_t code) { return (float)code * 430.0f / 32768.0f; }
 static float maxRtdCodeToTempApprox(const uint16_t code) { return (float)code / 32.0f - 256.0f; }
 
-// TODO: Enable for FR2433
-// static void adcInit(void)
-// {
-// 	SYSCFG2 |= ADCPCTL6;
-// 	ADCCTL0 |= ADCSHT_2 | ADCON;
-// 	ADCCTL1 |= ADCSHP;
-// 	ADCCTL2 |= ADCRES_2;
-// 	ADCMCTL0 |= ADCINCH_6 | ADCSREF_0;
-// }
-//
-// static uint16_t adcReadRaw(void)
-// {
-// 	ADCCTL0 &= ~ADCENC;
-// 	ADCMCTL0 = ADCINCH_6 | ADCSREF_0;
-// 	ADCCTL0 |= ADCENC | ADCSC;
-//
-// 	while (ADCCTL1 & ADCBUSY);
-// 	return ADCMEM0;
-// }
 static void adcInit(void)
 {
-	P6SEL |= BIT0;
-
-	ADC12CTL0 = ADC12SHT0_2 | ADC12ON;
-	ADC12CTL1 = ADC12SHP;
-	ADC12CTL2 = ADC12RES_2;
-	ADC12MCTL0 = ADC12INCH_0 | ADC12SREF_0;
-	ADC12CTL0 |= ADC12ENC;
+	SYSCFG2 |= ADCPCTL6;
+	ADCCTL0 = ADCSHT_2 | ADCON;
+	ADCCTL1 = ADCSHP;
+	ADCCTL2 = ADCRES_2;
+	ADCMCTL0 = ADCINCH_6 | ADCSREF_0;
 }
 
 static uint16_t adcReadRaw(void)
 {
-	ADC12CTL0 |= ADC12SC;
+	ADCCTL0 &= ~ADCENC;
+	ADCMCTL0 = ADCINCH_6 | ADCSREF_0;
+	ADCCTL0 |= ADCENC | ADCSC;
 
-	while (ADC12CTL1 & ADC12BUSY);
-	return ADC12MEM0;
+	while (ADCCTL1 & ADCBUSY);
+	return ADCMEM0;
+}
+
+static void i2cInit(void)
+{
+	i2cSclHigh();
+	i2cSdaHigh();
+}
+
+static void i2cStart(void)
+{
+	i2cSdaHigh();
+	i2cSclHigh();
+	i2cDelay();
+	i2cSdaLow();
+	i2cDelay();
+	i2cSclLow();
+	i2cDelay();
+}
+
+static void i2cStop(void)
+{
+	i2cSdaLow();
+	i2cDelay();
+	i2cSclHigh();
+	i2cDelay();
+	i2cSdaHigh();
+	i2cDelay();
+}
+
+static uint8_t i2cWriteByte(const uint8_t byte)
+{
+	for (int i = 7; i >= 0; i--)
+	{
+		if (byte & (1u << i)) i2cSdaHigh();
+		else i2cSdaLow();
+
+		i2cDelay();
+		i2cSclHigh();
+		i2cDelay();
+		i2cSclLow();
+		i2cDelay();
+	}
+
+	i2cSdaHigh();
+	i2cDelay();
+	i2cSclHigh();
+	i2cDelay();
+
+	const uint8_t ack = !(OLED_SDA_IN & OLED_SDA_PIN);
+	i2cSclLow();
+	i2cDelay();
+
+	return ack;
+}
+
+static void oledSendCommand(const uint8_t cmd)
+{
+	i2cStart();
+	i2cWriteByte((0x3C << 1) | 0);
+	i2cWriteByte(0x00);
+	i2cWriteByte(cmd);
+	i2cStop();
+}
+
+static void oledSendData(const uint8_t data)
+{
+	i2cStart();
+	i2cWriteByte((0x3C << 1) | 0);
+	i2cWriteByte(0x40);
+	i2cWriteByte(data);
+	i2cStop();
+}
+
+static void oledInit(void)
+{
+	i2cInit();
+	delayCyclesUl(50000);
+
+	oledSendCommand(0xAE);
+	oledSendCommand(0xD5);
+	oledSendCommand(0x80);
+	oledSendCommand(0xA8);
+	oledSendCommand(0x3F);
+	oledSendCommand(0xD3);
+	oledSendCommand(0x00);
+	oledSendCommand(0x40);
+	oledSendCommand(0x8D);
+	oledSendCommand(0x14);
+	oledSendCommand(0x20);
+	oledSendCommand(0x00);
+	oledSendCommand(0xA1);
+	oledSendCommand(0xC8);
+	oledSendCommand(0xDA);
+	oledSendCommand(0x12);
+	oledSendCommand(0x81);
+	oledSendCommand(0xCF);
+	oledSendCommand(0xD9);
+	oledSendCommand(0xF1);
+	oledSendCommand(0xDB);
+	oledSendCommand(0x40);
+	oledSendCommand(0xA4);
+	oledSendCommand(0xA6);
+	oledSendCommand(0x2E);
+	oledSendCommand(0xAF);
+}
+
+static void oledClear(void)
+{
+	oledSendCommand(0x21);
+	oledSendCommand(0x00);
+	oledSendCommand(0x7F);
+	oledSendCommand(0x22);
+	oledSendCommand(0x00);
+	oledSendCommand(0x07);
+
+	for (uint16_t i = 0; i < 1024; ++i) oledSendData(0x00);
 }
 
 static void gpioInit(void)
 {
 	LED_DIR |= LED_PIN;
 	LED_PORT &= ~LED_PIN;
+
+	P1SEL0 &= ~(BIT2 | BIT3 | BIT7);
+	P1SEL1 &= ~(BIT2 | BIT3 | BIT7);
 }
 
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
-	// TODO: Enable for FR2433
-	// PM5CTL0 &= ~LOCKLPM5;
+	PM5CTL0 &= ~LOCKLPM5;
 
 	gpioInit();
 	maxInit();
 	adcInit();
+	oledInit();
+	oledClear();
 
 	while (1)
 	{
@@ -234,7 +367,7 @@ int main(void)
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(50000);
 
-			maxWriteReg(MAX_REG_CONF, 0xD1 | (1 << 1));
+			maxWriteReg(MAX_REG_CONF, 0xD1 | (1u << 1));
 			maxWriteReg(MAX_REG_CONF, 0xD1);
 
 			continue;
