@@ -1,0 +1,8 @@
+.DS_Store
+bin/
+lib/dummy
+
+.vscode/
+.vs/
+.idea/
+!.idea/custom-compiler.xml
