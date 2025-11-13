@@ -64,6 +64,7 @@ static void maxSpiInitPins(void)
 static uint8_t maxSpiTransfer(const uint8_t outByte)
 {
 	uint8_t inByte = 0;
+
 	for (int i = 7; i >= 0; i--)
 	{
 		const uint8_t outBit = outByte >> i & 0x01;
@@ -74,16 +75,14 @@ static uint8_t maxSpiTransfer(const uint8_t outByte)
 			MAX_MOSI_PORT &= ~MAX_MOSI_PIN;
 
 		spiDelay();
-
 		MAX_SCLK_PORT |= MAX_SCLK_PIN;
 		spiDelay();
-
 		MAX_SCLK_PORT &= ~MAX_SCLK_PIN;
-		spiDelay();
 
 		inByte <<= 1;
-		if (MAX_MISO_PORT & MAX_MISO_PIN)
-			inByte |= 1;
+		if (MAX_MISO_PORT & MAX_MISO_PIN) inByte |= 1;
+
+		spiDelay();
 	}
 
 	return inByte;
@@ -128,9 +127,19 @@ static void maxReadMulti(const uint8_t startAddr, uint8_t* buf, const uint8_t le
 	maxCsLow();
 
 	(void)maxSpiTransfer(startAddr & 0x7F);
-	for (uint8_t i = 0; i < len; i++) { buf[i] = maxSpiTransfer(0x00); }
+	for (uint8_t i = 0; i < len; ++i) buf[i] = maxSpiTransfer(0x00);
 
 	maxCsHigh();
+}
+
+static uint8_t maxReadFault(void) { return maxReadReg(MAX_REG_FAULT); }
+
+static uint8_t maxWaitDrdy(void)
+{
+	unsigned long count = 1000000UL;
+
+	while (MAX_DRDY_PORT & MAX_DRDY_PIN && count--);
+	return count != 0;
 }
 
 static void maxInit(void)
@@ -141,9 +150,9 @@ static void maxInit(void)
 	maxWriteReg(MAX_REG_CONF, 0xD1);
 	maxWriteReg(MAX_REG_CONF, 0xD3);
 	maxWriteReg(MAX_REG_CONF, 0xD1);
-}
 
-static void maxWaitDrdy(void) { while (MAX_DRDY_PORT & MAX_DRDY_PIN); }
+	(void)maxReadFault();
+}
 
 static uint16_t maxReadRtdRaw(void)
 {
@@ -176,6 +185,26 @@ int main(void)
 
 	while (1)
 	{
+		if (!maxWaitDrdy())
+		{
+			LED_PORT ^= LED_PIN;
+			delayCyclesUl(200000);
+
+			return 0;
+		}
+
+		const uint8_t fault = maxReadFault();
+		if (fault != 0)
+		{
+			LED_PORT ^= LED_PIN;
+			delayCyclesUl(50000);
+
+			maxWriteReg(MAX_REG_CONF, 0xD1 | 1 << 1);
+			maxWriteReg(MAX_REG_CONF, 0xD1);
+
+			continue;
+		}
+
 		const uint16_t code = maxReadRtdRaw();
 		const float rOhms = maxRtdCodeToResistance(code);
 		const float tDegC = maxRtdCodeToTempApprox(code);
@@ -185,6 +214,6 @@ int main(void)
 		(void)code;
 
 		LED_PORT ^= LED_PIN;
-		delayCyclesUl(100000);
+		delayCyclesUl(200000);
 	}
 }
