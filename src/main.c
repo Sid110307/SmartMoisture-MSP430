@@ -132,8 +132,6 @@ static void maxReadMulti(const uint8_t startAddr, uint8_t* buf, const uint8_t le
 	maxCsHigh();
 }
 
-static uint8_t maxReadFault(void) { return maxReadReg(MAX_REG_FAULT); }
-
 static uint8_t maxWaitDrdy(void)
 {
 	unsigned long count = 1000000UL;
@@ -151,7 +149,7 @@ static void maxInit(void)
 	maxWriteReg(MAX_REG_CONF, 0xD3);
 	maxWriteReg(MAX_REG_CONF, 0xD1);
 
-	(void)maxReadFault();
+	(void)maxReadReg(MAX_REG_FAULT);
 }
 
 static uint16_t maxReadRtdRaw(void)
@@ -174,6 +172,44 @@ static uint16_t maxReadRtdRaw(void)
 static float maxRtdCodeToResistance(const uint16_t code) { return (float)code * 430.0f / 32768.0f; }
 static float maxRtdCodeToTempApprox(const uint16_t code) { return (float)code / 32.0f - 256.0f; }
 
+// TODO: Enable for FR2433
+// static void adcInit(void)
+// {
+// 	SYSCFG2 |= ADCPCTL6;
+// 	ADCCTL0 |= ADCSHT_2 | ADCON;
+// 	ADCCTL1 |= ADCSHP;
+// 	ADCCTL2 |= ADCRES_2;
+// 	ADCMCTL0 |= ADCINCH_6 | ADCSREF_0;
+// }
+//
+// static uint16_t adcReadRaw(void)
+// {
+// 	ADCCTL0 &= ~ADCENC;
+// 	ADCMCTL0 = ADCINCH_6 | ADCSREF_0;
+// 	ADCCTL0 |= ADCENC | ADCSC;
+//
+// 	while (ADCCTL1 & ADCBUSY);
+// 	return ADCMEM0;
+// }
+static void adcInit(void)
+{
+	P6SEL |= BIT0;
+
+	ADC12CTL0 = ADC12SHT0_2 | ADC12ON;
+	ADC12CTL1 = ADC12SHP;
+	ADC12CTL2 = ADC12RES_2;
+	ADC12MCTL0 = ADC12INCH_0 | ADC12SREF_0;
+	ADC12CTL0 |= ADC12ENC;
+}
+
+static uint16_t adcReadRaw(void)
+{
+	ADC12CTL0 |= ADC12SC;
+
+	while (ADC12CTL1 & ADC12BUSY);
+	return ADC12MEM0;
+}
+
 static void gpioInit(void)
 {
 	LED_DIR |= LED_PIN;
@@ -183,14 +219,16 @@ static void gpioInit(void)
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
-	PM5CTL0 &= ~LOCKLPM5;
+	// TODO: Enable for FR2433
+	// PM5CTL0 &= ~LOCKLPM5;
 
 	gpioInit();
 	maxInit();
+	adcInit();
 
 	while (1)
 	{
-		const uint8_t fault = maxReadFault();
+		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
 		{
 			LED_PORT ^= LED_PIN;
@@ -205,10 +243,12 @@ int main(void)
 		const uint16_t code = maxReadRtdRaw();
 		const float rOhms = maxRtdCodeToResistance(code);
 		const float tDegC = maxRtdCodeToTempApprox(code);
+		const uint16_t adcRaw = adcReadRaw();
 
 		(void)rOhms;
 		(void)tDegC;
 		(void)code;
+		(void)adcRaw;
 
 		LED_PORT ^= LED_PIN;
 		delayCyclesUl(200000);
