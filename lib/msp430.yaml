@@ -25,7 +25,6 @@ compilers:
 #define __SIZEOF_POINTER__ 2
 #define __ORDER_LITTLE_ENDIAN__ 1234
 #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
-#define __interrupt
 "
   - description: CPP14 MSP430 GCC
     match-sources: ".*\\.cpp"
@@ -56,5 +55,4 @@ compilers:
 #define __ORDER_LITTLE_ENDIAN__ 1234
 #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
 #define __cplusplus 201402L
-#define __interrupt
 "

@@ -4,8 +4,7 @@ project(SmartMoisture-MSP430 C)
 set(FLASHER "C:/Progra~1/TI/UniFlash_9.3.0/dslite.bat")
 set(MCU "${MSP430_MCU}")
 
-set(SRC_DIR "${CMAKE_SOURCE_DIR}/src")
-file(GLOB SRC_FILES "${SRC_DIR}/*.c")
+file(GLOB SRC_FILES "src/*.c")
 add_executable(firmware.elf ${SRC_FILES})
 
 target_compile_options(firmware.elf PRIVATE -g)
