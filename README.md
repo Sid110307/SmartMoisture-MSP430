@@ -48,7 +48,7 @@ devices.
 - BLE_RESET - P3.0
 - BLE_TX - P1.5
 - BLE_RX - P1.4
-- VCC - 3.3V (controlled by BLE_PWR)
+- VCC - 3.3V (via BLE_PWR, controlled by P2.7)
 - GND - GND
 
 ### Status LED:
