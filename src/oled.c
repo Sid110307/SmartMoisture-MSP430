@@ -112,26 +112,26 @@ static uint8_t fontIndexForChar(const char c)
 
 static void i2cDelay(void) { delayCyclesUl(20); }
 
+static void i2cSclHigh(void)
+{
+	OLED_SCL_DIR &= ~OLED_SCL_PIN;
+}
+
 static void i2cSclLow(void)
 {
 	OLED_SCL_DIR |= OLED_SCL_PIN;
 	OLED_SCL_PORT &= ~OLED_SCL_PIN;
 }
 
-static void i2cSclHigh(void)
+static void i2cSdaHigh(void)
 {
-	OLED_SCL_DIR &= ~OLED_SCL_PIN;
+	OLED_SDA_DIR &= ~OLED_SDA_PIN;
 }
 
 static void i2cSdaLow(void)
 {
 	OLED_SDA_DIR |= OLED_SDA_PIN;
 	OLED_SDA_PORT &= ~OLED_SDA_PIN;
-}
-
-static void i2cSdaHigh(void)
-{
-	OLED_SDA_DIR &= ~OLED_SDA_PIN;
 }
 
 static void i2cInit(void)
@@ -267,12 +267,9 @@ void oledClear(void)
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {
 	uint8_t x = col;
-	oledSendCommand(0xAF);
-
 	while (*s && x < 128)
 	{
 		oledDrawChar(x, page, *s++);
 		x += 6;
 	}
-	oledSendCommand(0xAE);
 }

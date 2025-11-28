@@ -8,7 +8,7 @@
 #define BLE_RX_BUFFER_SIZE 64
 
 static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
-static volatile uint8_t bleRxHead = 0;
+static volatile uint8_t bleRxHead = 0, bleRxCount = 0;
 static uint8_t bleIrqPrevLevel = 0, bleConnected = 0;
 
 static void adcInit(void)
@@ -97,17 +97,28 @@ static void bleSendMeasurement(const float tempC, const float moisturePercent)
 
 static uint8_t bleRxContains(const char* pattern)
 {
-	const uint8_t len = bleRxHead;
-	uint8_t patLen = 0;
-
+	uint8_t patLen = 0, len, head;
 	while (pattern[patLen] != '\0') patLen++;
-	if (len < patLen) return 0;
 
-	for (uint8_t i = 0; i + patLen <= len; ++i)
+	__disable_interrupt();
+	len = bleRxCount;
+	head = bleRxHead;
+	__enable_interrupt();
+
+	if (len < patLen) return 0;
+	const uint8_t start = (uint8_t)((head + BLE_RX_BUFFER_SIZE - len) % BLE_RX_BUFFER_SIZE);
+
+	for (uint8_t i = 0; i <= (uint8_t)(len - patLen); ++i)
 	{
 		uint8_t j = 0;
 
-		while (j < patLen && bleRxBuffer[i + j] == pattern[j]) j++;
+		while (j < patLen)
+		{
+			const uint8_t idx = (uint8_t)((start + i + j) % BLE_RX_BUFFER_SIZE);
+			if (bleRxBuffer[idx] != pattern[j]) break;
+
+			j++;
+		}
 		if (j == patLen) return 1;
 	}
 	return 0;
@@ -115,9 +126,12 @@ static uint8_t bleRxContains(const char* pattern)
 
 static uint8_t bleSendCommand(const char* cmd, const char* expect, const unsigned long timeoutCycles)
 {
+	__disable_interrupt();
 	bleRxHead = 0;
-	blePrintString(cmd);
+	bleRxCount = 0;
+	__enable_interrupt();
 
+	blePrintString(cmd);
 	unsigned long count = timeoutCycles;
 	while (count--) if (bleRxContains(expect)) return 1;
 
@@ -215,13 +229,10 @@ __attribute__((interrupt(USCI_A0_VECTOR))) void USCI_A0_ISR(void)
 	if (UCA0IFG & UCRXIFG)
 	{
 		const char c = (char)UCA0RXBUF;
-		const uint8_t next = (uint8_t)((bleRxHead + 1u) % BLE_RX_BUFFER_SIZE);
+		bleRxBuffer[bleRxHead] = c;
+		bleRxHead = (uint8_t)((bleRxHead + 1u) % BLE_RX_BUFFER_SIZE);
 
-		if (next != 0u)
-		{
-			bleRxBuffer[bleRxHead] = c;
-			bleRxHead = next;
-		}
+		if (bleRxCount < BLE_RX_BUFFER_SIZE) bleRxCount++;
 	}
 }
 

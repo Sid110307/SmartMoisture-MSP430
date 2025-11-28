@@ -30,10 +30,8 @@ static uint8_t maxSpiTransfer(const uint8_t outByte)
 	{
 		const uint8_t outBit = outByte >> i & 0x01;
 
-		if (outBit)
-			MAX_MOSI_PORT |= MAX_MOSI_PIN;
-		else
-			MAX_MOSI_PORT &= ~MAX_MOSI_PIN;
+		if (outBit) MAX_MOSI_PORT |= MAX_MOSI_PIN;
+		else MAX_MOSI_PORT &= ~MAX_MOSI_PIN;
 
 		spiDelay();
 		MAX_SCLK_PORT |= MAX_SCLK_PIN;
