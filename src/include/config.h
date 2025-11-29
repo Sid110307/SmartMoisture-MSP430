@@ -7,18 +7,6 @@
 #define MAX_CS_DIR P2DIR
 #define MAX_CS_PIN BIT3
 
-#define MAX_SCLK_PORT P2OUT
-#define MAX_SCLK_DIR P2DIR
-#define MAX_SCLK_PIN BIT4
-
-#define MAX_MISO_PORT P2IN
-#define MAX_MISO_DIR P2DIR
-#define MAX_MISO_PIN BIT5
-
-#define MAX_MOSI_PORT P2OUT
-#define MAX_MOSI_DIR P2DIR
-#define MAX_MOSI_PIN BIT6
-
 #define MAX_DRDY_PORT P3IN
 #define MAX_DRDY_DIR P3DIR
 #define MAX_DRDY_REN P3REN
@@ -36,14 +24,7 @@
 #define ADC_SHT_SETTING ADCSHT_2
 #define ADC_RES_SETTING ADCRES_1
 
-#define OLED_SCL_PORT P1OUT
-#define OLED_SCL_DIR P1DIR
-#define OLED_SCL_PIN BIT2
-
-#define OLED_SDA_PORT P1OUT
-#define OLED_SDA_DIR P1DIR
-#define OLED_SDA_PIN BIT3
-#define OLED_SDA_IN P1IN
+#define OLED_ADDR 0x3C
 
 #define LED_PORT P1OUT
 #define LED_DIR P1DIR
@@ -74,12 +55,8 @@
 #define BLE_SAMPLE_DELAY 200000UL
 #define BLE_FAULT_BLINK_DELAY 50000UL
 
-static void delayCyclesUl(unsigned long n)
+static void delayCyclesUl(uint32_t n)
 {
-	__asm__ __volatile__ (
-		"1:\n\t"
-		"dec %[count]\n\t"
-		"jnz 1b"
-		: [count] "+r" (n)
-	);
+	while (n--)
+		__no_operation();
 }

@@ -24,7 +24,6 @@ static uint16_t adcReadRaw(void)
 {
 	ADCCTL0 &= ~ADCENC;
 	ADCCTL0 |= ADCON;
-	ADCMCTL0 = ADC_INPUT_CHANNEL | ADC_REF_SELECT;
 	ADCCTL0 |= ADCENC | ADCSC;
 
 	while (ADCCTL1 & ADCBUSY);
@@ -46,10 +45,8 @@ static void gpioInit(void)
 	LED_DIR |= LED_PIN;
 	LED_PORT &= ~LED_PIN;
 
-	P1SEL0 &= ~(OLED_SCL_PIN | OLED_SDA_PIN | LED_PIN);
-	P1SEL1 &= ~(OLED_SCL_PIN | OLED_SDA_PIN | LED_PIN);
-	P2SEL0 = 0;
-	P2SEL1 = 0;
+	P1SEL0 &= ~LED_PIN;
+	P1SEL1 &= ~LED_PIN;
 
 	BLE_PWR_DIR |= BLE_PWR_PIN;
 	BLE_PWR_PORT |= BLE_PWR_PIN;
@@ -158,10 +155,7 @@ int main(void)
 	if (!bleSendCommand("AT\r\n", "OK", BLE_AT_TIMEOUT))
 		while (1)
 		{
-			char line1[16];
-			snprintf(line1, sizeof(line1), "BLE: No OK");
-			oledDrawString(0, 0, line1);
-
+			oledDrawString(0, 0, "BLE: No OK");
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 		}
@@ -179,18 +173,15 @@ int main(void)
 			bleIrqPrevLevel = irqLevel;
 			bleConnected = irqLevel;
 
-			char line1[16];
 			if (bleConnected)
 			{
 				BLE_WAKE_PORT |= BLE_WAKE_PIN;
-				snprintf(line1, sizeof(line1), "BLE: Connected");
-				oledDrawString(0, 0, line1);
+				oledDrawString(0, 0, "BLE: Connected");
 			}
 			else
 			{
 				BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
-				snprintf(line1, sizeof(line1), "BLE: Disconnected");
-				oledDrawString(0, 0, line1);
+				oledDrawString(0, 0, "BLE: Disconnected");
 			}
 			oledDrawString(0, 1, "                ");
 

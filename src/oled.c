@@ -106,103 +106,52 @@ static const uint8_t font5x7[][5] = {
 
 static uint8_t fontIndexForChar(const char c)
 {
-	if (c < 0x20 || c > 0x7E) return (0x7E - 0x20 + 1);
-	return (uint8_t)(c - 0x20);
-}
-
-static void i2cDelay(void) { delayCyclesUl(20); }
-
-static void i2cSclHigh(void)
-{
-	OLED_SCL_DIR &= ~OLED_SCL_PIN;
-}
-
-static void i2cSclLow(void)
-{
-	OLED_SCL_DIR |= OLED_SCL_PIN;
-	OLED_SCL_PORT &= ~OLED_SCL_PIN;
-}
-
-static void i2cSdaHigh(void)
-{
-	OLED_SDA_DIR &= ~OLED_SDA_PIN;
-}
-
-static void i2cSdaLow(void)
-{
-	OLED_SDA_DIR |= OLED_SDA_PIN;
-	OLED_SDA_PORT &= ~OLED_SDA_PIN;
+	if ((unsigned char)c < 0x20 || (unsigned char)c > 0x7E) return 0;
+	return (uint8_t)((unsigned char)c - 0x20);
 }
 
 static void i2cInit(void)
 {
-	i2cSclHigh();
-	i2cSdaHigh();
+	P1SEL0 |= BIT2 | BIT3;
+	P1SEL1 &= ~(BIT2 | BIT3);
+
+	UCB0CTLW0 = UCSWRST;
+	UCB0CTLW0 |= UCMST | UCMODE_3 | UCSYNC;
+	UCB0CTLW0 |= UCSSEL__SMCLK;
+
+	UCB0BRW = 10;
+	UCB0I2CSA = OLED_ADDR;
+	UCB0CTLW0 &= ~UCSWRST;
 }
 
-static void i2cStart(void)
+static void i2cWriteBytes(const uint8_t control, const uint8_t* data, const uint16_t len)
 {
-	i2cSdaHigh();
-	i2cSclHigh();
-	i2cDelay();
-	i2cSdaLow();
-	i2cDelay();
-	i2cSclLow();
-	i2cDelay();
-}
+	while (UCB0STATW & UCBBUSY);
+	UCB0CTLW0 |= UCTR | UCTXSTT;
+	while (!(UCB0IFG & UCTXIFG0));
+	UCB0TXBUF = control;
 
-static void i2cStop(void)
-{
-	i2cSdaLow();
-	i2cDelay();
-	i2cSclHigh();
-	i2cDelay();
-	i2cSdaHigh();
-	i2cDelay();
-}
-
-static uint8_t i2cWriteByte(const uint8_t byte)
-{
-	for (int i = 7; i >= 0; i--)
+	for (uint16_t i = 0; i < len; ++i)
 	{
-		if (byte & (1u << i)) i2cSdaHigh();
-		else i2cSdaLow();
-
-		i2cDelay();
-		i2cSclHigh();
-		i2cDelay();
-		i2cSclLow();
-		i2cDelay();
+		while (!(UCB0IFG & UCTXIFG0));
+		UCB0TXBUF = data[i];
 	}
 
-	i2cSdaHigh();
-	i2cDelay();
-	i2cSclHigh();
-	i2cDelay();
-
-	const uint8_t ack = !(OLED_SDA_IN & OLED_SDA_PIN);
-	i2cSclLow();
-	i2cDelay();
-
-	return ack;
+	while (!(UCB0IFG & UCTXIFG0));
+	UCB0CTLW0 |= UCTXSTP;
+	while (UCB0CTLW0 & UCTXSTP);
 }
 
 static void oledSendCommand(const uint8_t cmd)
 {
-	i2cStart();
-	i2cWriteByte((0x3C << 1) | 0);
-	i2cWriteByte(0x00);
-	i2cWriteByte(cmd);
-	i2cStop();
+	const uint8_t b = cmd;
+	i2cWriteBytes(0x00, &b, 1);
 }
 
 static void oledSendData(const uint8_t data)
 {
-	i2cStart();
-	i2cWriteByte((0x3C << 1) | 0);
-	i2cWriteByte(0x40);
-	i2cWriteByte(data);
-	i2cStop();
+	const uint8_t b = data;
+	i2cWriteBytes(0x40, &b, 1);
 }
 
 static void oledSetCursor(const uint8_t col, const uint8_t page)
@@ -210,6 +159,7 @@ static void oledSetCursor(const uint8_t col, const uint8_t page)
 	oledSendCommand(0x21);
 	oledSendCommand(col);
 	oledSendCommand(0x7F);
+
 	oledSendCommand(0x22);
 	oledSendCommand(page);
 	oledSendCommand(0x07);
