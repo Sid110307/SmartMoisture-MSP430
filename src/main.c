@@ -150,18 +150,19 @@ int main(void)
 
 	UCA0IE |= UCRXIE;
 	__enable_interrupt();
+	oledDrawString(0, 0, "Initializing...");
 
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 	if (!bleSendCommand("AT\r\n", "OK", BLE_AT_TIMEOUT))
 		while (1)
 		{
-			oledDrawString(0, 0, "BLE: No OK");
+			oledDrawString(0, 0, "BLE: No Response");
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 		}
 
 	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
-	bleSendCommand("AT+BAUD\r\n", "OK", BLE_AT_TIMEOUT);
+	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
 
 	while (1)
 	{
@@ -192,6 +193,7 @@ int main(void)
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
 		{
+			oledDrawString(0, 2, "MAX: Fault Detected");
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 
@@ -208,7 +210,7 @@ int main(void)
 		char line1[16], line2[16];
 		bleSendMeasurement(tDegC, moisturePercent);
 
-		snprintf(line1, sizeof(line1), "Temp: %.2f C", tDegC);
+		snprintf(line1, sizeof(line1), "Temp:  %.2f C", tDegC);
 		snprintf(line2, sizeof(line2), "Moist: %.2f %%", moisturePercent);
 		oledDrawString(0, 2, line1);
 		oledDrawString(0, 3, line2);

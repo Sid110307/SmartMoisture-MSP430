@@ -116,53 +116,45 @@ static void i2cInit(void)
 	P1SEL1 &= ~(BIT2 | BIT3);
 
 	UCB0CTLW0 = UCSWRST;
-	UCB0CTLW0 |= UCMST | UCMODE_3 | UCSYNC;
-	UCB0CTLW0 |= UCSSEL__SMCLK;
-
+	UCB0CTLW0 = UCMST | UCMODE_3 | UCSYNC | UCSSEL__SMCLK;
 	UCB0BRW = 10;
 	UCB0I2CSA = OLED_ADDR;
 	UCB0CTLW0 &= ~UCSWRST;
 }
 
-static void i2cWriteBytes(const uint8_t control, const uint8_t* data, const uint16_t len)
+static void i2cWriteByte(const uint8_t control, const uint8_t data)
 {
-	while (UCB0STATW & UCBBUSY);
+	UCB0IFG &= ~(UCNACKIFG | UCTXIFG0);
+	while (UCB0CTLW0 & UCTXSTP);
 	UCB0CTLW0 |= UCTR | UCTXSTT;
+
+	while (UCB0CTLW0 & UCTXSTT)
+		if (UCB0IFG & UCNACKIFG)
+		{
+			UCB0CTLW0 |= UCTXSTP;
+			while (UCB0CTLW0 & UCTXSTP);
+
+			return;
+		}
+
 	while (!(UCB0IFG & UCTXIFG0));
 	UCB0TXBUF = control;
-
-	for (uint16_t i = 0; i < len; ++i)
-	{
-		while (!(UCB0IFG & UCTXIFG0));
-		UCB0TXBUF = data[i];
-	}
+	while (!(UCB0IFG & UCTXIFG0));
+	UCB0TXBUF = data;
 
 	while (!(UCB0IFG & UCTXIFG0));
 	UCB0CTLW0 |= UCTXSTP;
 	while (UCB0CTLW0 & UCTXSTP);
 }
 
-static void oledSendCommand(const uint8_t cmd)
-{
-	const uint8_t b = cmd;
-	i2cWriteBytes(0x00, &b, 1);
-}
-
-static void oledSendData(const uint8_t data)
-{
-	const uint8_t b = data;
-	i2cWriteBytes(0x40, &b, 1);
-}
+static void oledSendCommand(const uint8_t cmd) { i2cWriteByte(0x00, cmd); }
+static void oledSendData(const uint8_t data) { i2cWriteByte(0x40, data); }
 
 static void oledSetCursor(const uint8_t col, const uint8_t page)
 {
-	oledSendCommand(0x21);
-	oledSendCommand(col);
-	oledSendCommand(0x7F);
-
-	oledSendCommand(0x22);
-	oledSendCommand(page);
-	oledSendCommand(0x07);
+	oledSendCommand(0xB0 | (page & 0x07));
+	oledSendCommand(0x00 | (col & 0x0F));
+	oledSendCommand(0x10 | (col >> 4));
 }
 
 static void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
