@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #include "./include/max.h"
 #include "./include/oled.h"
 
@@ -74,15 +72,12 @@ float maxReadRtdTemp(void)
 {
 	uint8_t buf[2];
 	if (!maxWaitDrdy())
-		while (1)
-		{
-			oledDrawString(0, 1, "MAX: Not ready");
-			LED_PORT ^= LED_PIN;
-			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
-		}
+	{
+		oledDrawString(0, 1, "MAX: Not ready");
+		return -273.15f;
+	}
 
 	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
-
 	uint16_t raw = (uint16_t)buf[0] << 8 | buf[1];
 	raw >>= 1;
 

@@ -117,54 +117,57 @@ static void i2cInit(void)
 
 	UCB0CTLW0 = UCSWRST;
 	UCB0CTLW0 = UCMST | UCMODE_3 | UCSYNC | UCSSEL__SMCLK;
-	UCB0BRW = 10;
+	UCB0BRW = 3;
 	UCB0I2CSA = OLED_ADDR;
 	UCB0CTLW0 &= ~UCSWRST;
 }
 
-static void i2cWriteByte(const uint8_t control, const uint8_t data)
+static void i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t len)
 {
 	UCB0IFG &= ~(UCNACKIFG | UCTXIFG0);
 	while (UCB0CTLW0 & UCTXSTP);
 	UCB0CTLW0 |= UCTR | UCTXSTT;
 
-	while (UCB0CTLW0 & UCTXSTT)
-		if (UCB0IFG & UCNACKIFG)
-		{
-			UCB0CTLW0 |= UCTXSTP;
-			while (UCB0CTLW0 & UCTXSTP);
-
-			return;
-		}
-
 	while (!(UCB0IFG & UCTXIFG0));
 	UCB0TXBUF = control;
-	while (!(UCB0IFG & UCTXIFG0));
-	UCB0TXBUF = data;
+
+	while (len--)
+	{
+		while (!(UCB0IFG & UCTXIFG0));
+		UCB0TXBUF = *data++;
+	}
 
 	while (!(UCB0IFG & UCTXIFG0));
 	UCB0CTLW0 |= UCTXSTP;
 	while (UCB0CTLW0 & UCTXSTP);
 }
 
-static void oledSendCommand(const uint8_t cmd) { i2cWriteByte(0x00, cmd); }
-static void oledSendData(const uint8_t data) { i2cWriteByte(0x40, data); }
-
 static void oledSetCursor(const uint8_t col, const uint8_t page)
 {
-	oledSendCommand(0xB0 | (page & 0x07));
-	oledSendCommand(0x00 | (col & 0x0F));
-	oledSendCommand(0x10 | (col >> 4));
+	uint8_t cmds[3];
+
+	cmds[0] = 0xB0 | (page & 0x07);
+	cmds[1] = 0x00 | (col & 0x0F);
+	cmds[2] = 0x10 | (col >> 4);
+
+	i2cWriteBytes(0x00, cmds, 3);
 }
 
 static void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
 {
 	const uint8_t idx = fontIndexForChar(c);
 	const uint8_t* glyph = font5x7[idx];
+	uint8_t buf[6];
+
+	buf[0] = glyph[0];
+	buf[1] = glyph[1];
+	buf[2] = glyph[2];
+	buf[3] = glyph[3];
+	buf[4] = glyph[4];
+	buf[5] = 0x00;
 
 	oledSetCursor(col, page);
-	for (uint8_t i = 0; i < 5; ++i) oledSendData(glyph[i]);
-	oledSendData(0x00);
+	i2cWriteBytes(0x40, buf, 6);
 }
 
 void oledInit(void)
@@ -172,45 +175,22 @@ void oledInit(void)
 	i2cInit();
 	delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 
-	oledSendCommand(0xAE);
-	oledSendCommand(0xD5);
-	oledSendCommand(0x80);
-	oledSendCommand(0xA8);
-	oledSendCommand(0x3F);
-	oledSendCommand(0xD3);
-	oledSendCommand(0x00);
-	oledSendCommand(0x40);
-	oledSendCommand(0x8D);
-	oledSendCommand(0x14);
-	oledSendCommand(0x20);
-	oledSendCommand(0x00);
-	oledSendCommand(0xA1);
-	oledSendCommand(0xC8);
-	oledSendCommand(0xDA);
-	oledSendCommand(0x12);
-	oledSendCommand(0x81);
-	oledSendCommand(0xCF);
-	oledSendCommand(0xD9);
-	oledSendCommand(0xF1);
-	oledSendCommand(0xDB);
-	oledSendCommand(0x40);
-	oledSendCommand(0xA4);
-	oledSendCommand(0xA6);
-	oledSendCommand(0x2E);
-	oledSendCommand(0xAF);
-}
-
-void oledClear(void)
-{
-	oledSetCursor(0, 0);
-	for (uint16_t i = 0; i < 1024; ++i) oledSendData(0x00);
+	const uint8_t initCmds[] = {
+		0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40, 0x8D, 0x14, 0x20, 0x00, 0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xCF,
+		0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0x2E, 0xAF
+	};
+	i2cWriteBytes(0x00, initCmds, sizeof(initCmds));
 }
 
 void oledClearLine(const uint8_t page)
 {
+	const uint8_t zeros[16] = {0};
+
 	oledSetCursor(0, page);
-	for (uint8_t i = 0; i < 128; ++i) oledSendData(0x00);
+	for (uint8_t i = 0; i < 128; i += sizeof(zeros)) i2cWriteBytes(0x40, zeros, sizeof(zeros));
 }
+
+void oledClear(void) { for (uint8_t page = 0; page < 8; ++page) oledClearLine(page); }
 
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {

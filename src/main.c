@@ -85,8 +85,17 @@ static void blePrintString(const char* str) { while (*str) blePrintChar(*str++);
 
 static void bleSendMeasurement(const float tempC, const float moisturePercent)
 {
+	const int tempX100 = (int)(tempC * 100.0f);
+	int tempFrac = tempX100 % 100;
+	if (tempFrac < 0) tempFrac = -tempFrac;
+
+	const int moistureX100 = (int)(moisturePercent * 100.0f);
+	int moistureFrac = moistureX100 % 100;
+	if (moistureFrac < 0) moistureFrac = -moistureFrac;
+
 	char buf[32];
-	const int n = snprintf(buf, sizeof(buf), "Temp:%.2f;Moisture:%.2f\r\n", tempC, moisturePercent);
+	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d.%02d\r\n", tempX100 / 100, tempFrac,
+	                       moistureX100 / 100, moistureFrac);
 	if (n <= 0) return;
 
 	blePrintString(buf);
@@ -153,14 +162,6 @@ int main(void)
 	oledDrawString(0, 0, "Initializing...");
 
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	if (!bleSendCommand("AT\r\n", "OK", BLE_AT_TIMEOUT))
-		while (1)
-		{
-			oledDrawString(0, 0, "BLE: No Response");
-			LED_PORT ^= LED_PIN;
-			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
-		}
-
 	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
 	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
 	oledDrawString(0, 0, "BLE: Disconnected");
@@ -202,7 +203,7 @@ int main(void)
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 
-			maxWriteReg(MAX_REG_CONF, 0xD1 | (1u << 1));
+			maxWriteReg(MAX_REG_CONF, 0xD3);
 			maxWriteReg(MAX_REG_CONF, 0xD1);
 
 			continue;
@@ -212,11 +213,19 @@ int main(void)
 		const float tDegC = maxReadRtdTemp();
 		const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
 
-		char line1[22], line2[22];
+		int tempX100 = (int)(tDegC * 100.0f);
+		int tempFrac = tempX100 % 100;
+		if (tempFrac < 0) tempFrac = -tempFrac;
+
+		int moistureX100 = (int)(moisturePercent * 100.0f);
+		int moistureFrac = moistureX100 % 100;
+		if (moistureFrac < 0) moistureFrac = -moistureFrac;
+
+		char line1[20], line2[20];
 		bleSendMeasurement(tDegC, moisturePercent);
 
-		snprintf(line1, sizeof(line1), "Temp:  %.2f C", tDegC);
-		snprintf(line2, sizeof(line2), "Moist: %.2f %%", moisturePercent);
+		snprintf(line1, sizeof(line1), "Temp:  %d.%02d C", tempX100 / 100, tempFrac);
+		snprintf(line2, sizeof(line2), "Moist: %d.%02d %%", moistureX100 / 100, moistureFrac);
 		oledDrawString(0, 2, line1);
 		oledDrawString(0, 3, line2);
 	}
