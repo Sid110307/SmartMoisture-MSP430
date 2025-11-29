@@ -76,7 +76,7 @@ float maxReadRtdTemp(void)
 	if (!maxWaitDrdy())
 		while (1)
 		{
-			oledDrawString(0, 2, "MAX: Sensor not ready");
+			oledDrawString(0, 1, "MAX: Not ready");
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 		}

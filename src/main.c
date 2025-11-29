@@ -163,6 +163,8 @@ int main(void)
 
 	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
 	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
+	oledDrawString(0, 0, "BLE: Disconnected");
+	oledClearLine(1);
 
 	while (1)
 	{
@@ -184,8 +186,8 @@ int main(void)
 				BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 				oledDrawString(0, 0, "BLE: Disconnected");
 			}
-			oledDrawString(0, 1, "                ");
 
+			oledClearLine(1);
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 		}
@@ -193,7 +195,10 @@ int main(void)
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
 		{
-			oledDrawString(0, 2, "MAX: Fault Detected");
+			char faultMsg[16];
+			snprintf(faultMsg, sizeof(faultMsg), "MAX: Fault (%02X)", fault);
+
+			oledDrawString(0, 1, faultMsg);
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 
@@ -207,7 +212,7 @@ int main(void)
 		const float tDegC = maxReadRtdTemp();
 		const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
 
-		char line1[16], line2[16];
+		char line1[22], line2[22];
 		bleSendMeasurement(tDegC, moisturePercent);
 
 		snprintf(line1, sizeof(line1), "Temp:  %.2f C", tDegC);

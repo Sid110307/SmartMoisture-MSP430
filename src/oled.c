@@ -206,6 +206,12 @@ void oledClear(void)
 	for (uint16_t i = 0; i < 1024; ++i) oledSendData(0x00);
 }
 
+void oledClearLine(const uint8_t page)
+{
+	oledSetCursor(0, page);
+	for (uint8_t i = 0; i < 128; ++i) oledSendData(0x00);
+}
+
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {
 	uint8_t x = col;
