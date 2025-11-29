@@ -74,7 +74,7 @@ float maxReadRtdTemp(void)
 	if (!maxWaitDrdy())
 	{
 		oledDrawString(0, 1, "MAX: Not ready");
-		return -273.15f;
+		return 0.0f;
 	}
 
 	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
