@@ -182,15 +182,15 @@ void oledInit(void)
 	i2cWriteBytes(0x00, initCmds, sizeof(initCmds));
 }
 
-void oledClearLine(const uint8_t page)
+void oledClear(void)
 {
 	const uint8_t zeros[16] = {0};
-
-	oledSetCursor(0, page);
-	for (uint8_t i = 0; i < 128; i += sizeof(zeros)) i2cWriteBytes(0x40, zeros, sizeof(zeros));
+	for (uint8_t page = 0; page < 8; ++page)
+	{
+		oledSetCursor(0, page);
+		for (uint8_t i = 0; i < 128; i += sizeof(zeros)) i2cWriteBytes(0x40, zeros, sizeof(zeros));
+	}
 }
-
-void oledClear(void) { for (uint8_t page = 0; page < 8; ++page) oledClearLine(page); }
 
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {
@@ -199,5 +199,16 @@ void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 	{
 		oledDrawChar(x, page, *s++);
 		x += 6;
+	}
+
+	const uint8_t zeros[16] = {0};
+	oledSetCursor(x, page);
+
+	while (x < 128)
+	{
+		const uint8_t chunk = (uint8_t)(128 - x > sizeof(zeros) ? sizeof(zeros) : 128 - x);
+
+		i2cWriteBytes(0x40, zeros, chunk);
+		x += chunk;
 	}
 }

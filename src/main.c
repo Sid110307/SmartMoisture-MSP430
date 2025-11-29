@@ -6,6 +6,8 @@
 #include "./include/oled.h"
 
 #define BLE_RX_BUFFER_SIZE 64
+#define ADC_DRY 710
+#define ADC_WET 260
 
 static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
 static volatile uint8_t bleRxHead = 0, bleRxCount = 0;
@@ -83,19 +85,14 @@ static void blePrintChar(const char c)
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
 
-static void bleSendMeasurement(const float tempC, const float moisturePercent)
+static void bleSendMeasurement(const float tempC, const int moistureRaw)
 {
 	const int tempX100 = (int)(tempC * 100.0f);
 	int tempFrac = tempX100 % 100;
 	if (tempFrac < 0) tempFrac = -tempFrac;
 
-	const int moistureX100 = (int)(moisturePercent * 100.0f);
-	int moistureFrac = moistureX100 % 100;
-	if (moistureFrac < 0) moistureFrac = -moistureFrac;
-
 	char buf[32];
-	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d.%02d\r\n", tempX100 / 100, tempFrac,
-	                       moistureX100 / 100, moistureFrac);
+	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac, moistureRaw);
 	if (n <= 0) return;
 
 	blePrintString(buf);
@@ -144,6 +141,14 @@ static uint8_t bleSendCommand(const char* cmd, const char* expect, const unsigne
 	return 0;
 }
 
+static float computeMoisturePercent(const uint16_t adcRaw)
+{
+	if (adcRaw >= ADC_DRY) return 0.0f;
+	if (adcRaw <= ADC_WET) return 100.0f;
+
+	return 100.0f * (float)(ADC_DRY - adcRaw) / (float)(ADC_DRY - ADC_WET);
+}
+
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
@@ -159,13 +164,14 @@ int main(void)
 
 	UCA0IE |= UCRXIE;
 	__enable_interrupt();
-	oledDrawString(0, 0, "Initializing...");
+	oledDrawString(0, 3, "  SmartMoisture v2.0");
+	oledDrawString(0, 4, "  Indriya Sensotech");
 
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
 	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
+	oledClear();
 	oledDrawString(0, 0, "BLE: Disconnected");
-	oledClearLine(1);
 
 	while (1)
 	{
@@ -188,7 +194,6 @@ int main(void)
 				oledDrawString(0, 0, "BLE: Disconnected");
 			}
 
-			oledClearLine(1);
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
 		}
@@ -197,7 +202,7 @@ int main(void)
 		if (fault != 0)
 		{
 			char faultMsg[16];
-			snprintf(faultMsg, sizeof(faultMsg), "MAX: Fault (%02X)", fault);
+			snprintf(faultMsg, sizeof(faultMsg), "MAX: Error (%02X)", fault);
 
 			oledDrawString(0, 1, faultMsg);
 			LED_PORT ^= LED_PIN;
@@ -211,7 +216,7 @@ int main(void)
 
 		const uint16_t adcRaw = adcReadRaw();
 		const float tDegC = maxReadRtdTemp();
-		const float moisturePercent = (float)adcRaw * 100.0f / 1023.0f;
+		const float moisturePercent = computeMoisturePercent(adcRaw);
 
 		int tempX100 = (int)(tDegC * 100.0f);
 		int tempFrac = tempX100 % 100;
@@ -221,13 +226,16 @@ int main(void)
 		int moistureFrac = moistureX100 % 100;
 		if (moistureFrac < 0) moistureFrac = -moistureFrac;
 
-		char line1[20], line2[20];
-		bleSendMeasurement(tDegC, moisturePercent);
+		char line1[20], line2[20], line3[20];
+		bleSendMeasurement(tDegC, adcRaw);
 
 		snprintf(line1, sizeof(line1), "Temp:  %d.%02d C", tempX100 / 100, tempFrac);
 		snprintf(line2, sizeof(line2), "Moist: %d.%02d %%", moistureX100 / 100, moistureFrac);
-		oledDrawString(0, 2, line1);
-		oledDrawString(0, 3, line2);
+		snprintf(line3, sizeof(line3), "ADC:   %u", adcRaw);
+
+		oledDrawString(0, 3, line1);
+		oledDrawString(0, 4, line2);
+		oledDrawString(0, 5, line3);
 	}
 }
 
