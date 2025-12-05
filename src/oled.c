@@ -153,23 +153,6 @@ static void oledSetCursor(const uint8_t col, const uint8_t page)
 	i2cWriteBytes(0x00, cmds, 3);
 }
 
-static void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
-{
-	const uint8_t idx = fontIndexForChar(c);
-	const uint8_t* glyph = font5x7[idx];
-	uint8_t buf[6];
-
-	buf[0] = glyph[0];
-	buf[1] = glyph[1];
-	buf[2] = glyph[2];
-	buf[3] = glyph[3];
-	buf[4] = glyph[4];
-	buf[5] = 0x00;
-
-	oledSetCursor(col, page);
-	i2cWriteBytes(0x40, buf, 6);
-}
-
 void oledInit(void)
 {
 	i2cInit();
@@ -190,6 +173,23 @@ void oledClear(void)
 		oledSetCursor(0, page);
 		for (uint8_t i = 0; i < 128; i += sizeof(zeros)) i2cWriteBytes(0x40, zeros, sizeof(zeros));
 	}
+}
+
+void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
+{
+	const uint8_t idx = fontIndexForChar(c);
+	const uint8_t* glyph = font5x7[idx];
+	uint8_t buf[6];
+
+	buf[0] = glyph[0];
+	buf[1] = glyph[1];
+	buf[2] = glyph[2];
+	buf[3] = glyph[3];
+	buf[4] = glyph[4];
+	buf[5] = 0x00;
+
+	oledSetCursor(col, page);
+	i2cWriteBytes(0x40, buf, 6);
 }
 
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)

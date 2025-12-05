@@ -6,8 +6,6 @@
 #include "./include/oled.h"
 
 #define BLE_RX_BUFFER_SIZE 64
-#define ADC_DRY 710
-#define ADC_WET 260
 
 static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
 static volatile uint8_t bleRxHead = 0, bleRxCount = 0;
@@ -85,14 +83,14 @@ static void blePrintChar(const char c)
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
 
-static void bleSendMeasurement(const float tempC, const int moistureRaw)
+static void bleSendMeasurement(const float tempC, const int adcRaw)
 {
 	const int tempX100 = (int)(tempC * 100.0f);
 	int tempFrac = tempX100 % 100;
 	if (tempFrac < 0) tempFrac = -tempFrac;
 
 	char buf[32];
-	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac, moistureRaw);
+	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac, adcRaw);
 	if (n <= 0) return;
 
 	blePrintString(buf);
@@ -141,14 +139,6 @@ static uint8_t bleSendCommand(const char* cmd, const char* expect, const unsigne
 	return 0;
 }
 
-static float computeMoisturePercent(const uint16_t adcRaw)
-{
-	if (adcRaw >= ADC_DRY) return 0.0f;
-	if (adcRaw <= ADC_WET) return 100.0f;
-
-	return 100.0f * (float)(ADC_DRY - adcRaw) / (float)(ADC_DRY - ADC_WET);
-}
-
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
@@ -170,10 +160,10 @@ int main(void)
 	__enable_interrupt();
 
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK\r\n", BLE_AT_TIMEOUT);
-	bleSendCommand("AT+BAUD=9600\r\n", "OK\r\n", BLE_AT_TIMEOUT);
+	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
+	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
 	oledClear();
-	oledDrawString(0, 0, "BLE: Disconnected");
+	oledDrawString(0, 0, "BLE: Ready");
 
 	while (1)
 	{
@@ -218,26 +208,18 @@ int main(void)
 
 		const uint16_t adcRaw = adcReadRaw();
 		const float tDegC = maxReadRtdTemp();
-		const float moisturePercent = computeMoisturePercent(adcRaw);
 
 		int tempX100 = (int)(tDegC * 100.0f);
 		int tempFrac = tempX100 % 100;
 		if (tempFrac < 0) tempFrac = -tempFrac;
 
-		int moistureX100 = (int)(moisturePercent * 100.0f);
-		int moistureFrac = moistureX100 % 100;
-		if (moistureFrac < 0) moistureFrac = -moistureFrac;
-
-		char line1[20], line2[20], line3[20];
+		char line1[20], line2[20];
 		bleSendMeasurement(tDegC, adcRaw);
 
-		snprintf(line1, sizeof(line1), "Temp:  %d.%02d C", tempX100 / 100, tempFrac);
-		snprintf(line2, sizeof(line2), "Moist: %d.%02d %%", moistureX100 / 100, moistureFrac);
-		snprintf(line3, sizeof(line3), "ADC:   %u", adcRaw);
-
+		snprintf(line1, sizeof(line1), "Temp: %d.%02d C", tempX100 / 100, tempFrac);
+		snprintf(line2, sizeof(line2), "ADC:  %u", adcRaw);
 		oledDrawString(0, 3, line1);
 		oledDrawString(0, 4, line2);
-		oledDrawString(0, 5, line3);
 	}
 }
 
