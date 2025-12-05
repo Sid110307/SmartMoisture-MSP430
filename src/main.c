@@ -156,20 +156,22 @@ int main(void)
 
 	timerInit();
 	gpioInit();
-	maxInit();
-	adcInit();
-	bleUartInit();
+
 	oledInit();
 	oledClear();
-
-	UCA0IE |= UCRXIE;
-	__enable_interrupt();
 	oledDrawString(0, 3, "  SmartMoisture v2.0");
 	oledDrawString(0, 4, "  Indriya Sensotech");
 
+	maxInit();
+	adcInit();
+	bleUartInit();
+
+	UCA0IE |= UCRXIE;
+	__enable_interrupt();
+
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
-	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
+	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK\r\n", BLE_AT_TIMEOUT);
+	bleSendCommand("AT+BAUD=9600\r\n", "OK\r\n", BLE_AT_TIMEOUT);
 	oledClear();
 	oledDrawString(0, 0, "BLE: Disconnected");
 
