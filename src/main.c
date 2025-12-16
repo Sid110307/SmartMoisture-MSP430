@@ -1,15 +1,16 @@
 #include <stdio.h>
+#include <string.h>
 #include <msp430.h>
 
 #include "./include/config.h"
 #include "./include/max.h"
 #include "./include/oled.h"
 
-#define BLE_RX_BUFFER_SIZE 64
+#define BLE_BUFFER_SIZE 64
 
-static volatile char bleRxBuffer[BLE_RX_BUFFER_SIZE];
-static volatile uint8_t bleRxHead = 0, bleRxCount = 0;
-static uint8_t bleIrqPrevLevel = 0, bleConnected = 0;
+static volatile uint8_t bleRxBuffer[BLE_BUFFER_SIZE];
+static volatile char bleLine[BLE_BUFFER_SIZE];
+static volatile uint8_t bleRxHead = 0, bleRxCount = 0, bleLineLen = 0, bleLineReady = 0;
 
 static void adcInit(void)
 {
@@ -54,17 +55,11 @@ static void gpioInit(void)
 	BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 	BLE_RESET_DIR |= BLE_RESET_PIN;
 	BLE_RESET_PORT |= BLE_RESET_PIN;
-	BLE_IRQ_DIR &= ~BLE_IRQ_PIN;
-	BLE_IRQ_REN |= BLE_IRQ_PIN;
-	BLE_IRQ_OUT &= ~BLE_IRQ_PIN;
-
-	bleIrqPrevLevel = (BLE_IRQ_PORT & BLE_IRQ_PIN) ? 1u : 0u;
-	bleConnected = bleIrqPrevLevel;
 }
 
 static void bleUartInit(void)
 {
-	P1SEL0 |= (BLE_RXSEL_BIT | BLE_TXSEL_BIT);
+	P1SEL0 |= BLE_RXSEL_BIT | BLE_TXSEL_BIT;
 	P1SEL1 &= ~(BLE_RXSEL_BIT | BLE_TXSEL_BIT);
 
 	UCA0CTLW0 = UCSWRST;
@@ -89,54 +84,33 @@ static void bleSendMeasurement(const float tempC, const int adcRaw)
 	int tempFrac = tempX100 % 100;
 	if (tempFrac < 0) tempFrac = -tempFrac;
 
-	char buf[32];
-	const int n = snprintf(buf, sizeof(buf), "Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac, adcRaw);
-	if (n <= 0) return;
-
-	blePrintString(buf);
+	char buf[48];
+	const int n = snprintf(buf, sizeof(buf), "CMD+DATA=0,Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac,
+	                       adcRaw);
+	if (n > 0) blePrintString(buf);
 }
 
-static uint8_t bleRxContains(const char* pattern)
+static void oledShowLastRx8(void)
 {
-	uint8_t patLen = 0, len, head;
-	while (pattern[patLen] != '\0') patLen++;
-
+	uint8_t head, cnt;
 	__disable_interrupt();
-	len = bleRxCount;
 	head = bleRxHead;
+	cnt = bleRxCount;
 	__enable_interrupt();
 
-	if (len < patLen) return 0;
-	const uint8_t start = (uint8_t)((head + BLE_RX_BUFFER_SIZE - len) % BLE_RX_BUFFER_SIZE);
+	char line[32];
+	uint8_t b[8] = {0};
 
-	for (uint8_t i = 0; i <= (uint8_t)(len - patLen); ++i)
+	uint8_t n = (cnt < 8) ? cnt : 8;
+	for (uint8_t k = 0; k < n; k++)
 	{
-		uint8_t j = 0;
-
-		while (j < patLen)
-		{
-			const uint8_t idx = (uint8_t)((start + i + j) % BLE_RX_BUFFER_SIZE);
-			if (bleRxBuffer[idx] != pattern[j]) break;
-
-			j++;
-		}
-		if (j == patLen) return 1;
+		uint8_t idx = (uint8_t)((head + BLE_BUFFER_SIZE - n + k) % BLE_BUFFER_SIZE);
+		b[k] = (uint8_t)bleRxBuffer[idx];
 	}
-	return 0;
-}
 
-static uint8_t bleSendCommand(const char* cmd, const char* expect, const unsigned long timeoutCycles)
-{
-	__disable_interrupt();
-	bleRxHead = 0;
-	bleRxCount = 0;
-	__enable_interrupt();
-
-	blePrintString(cmd);
-	unsigned long count = timeoutCycles;
-	while (count--) if (bleRxContains(expect)) return 1;
-
-	return 0;
+	snprintf(line, sizeof(line), "C%u%02X%02X%02X%02X%02X%02X%02X%02X", cnt, b[0], b[1], b[2], b[3], b[4], b[5], b[6],
+	         b[7]);
+	oledDrawString(0, 2, line);
 }
 
 int main(void)
@@ -159,36 +133,44 @@ int main(void)
 	UCA0IE |= UCRXIE;
 	__enable_interrupt();
 
+	BLE_RESET_PORT &= ~BLE_RESET_PIN;
+	delayCyclesUl(BLE_COMMAND_DELAY);
+	BLE_RESET_PORT |= BLE_RESET_PIN;
+	delayCyclesUl(BLE_COMMAND_DELAY);
+
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	bleSendCommand("AT+NAME=SmartMoisture\r\n", "OK", BLE_AT_TIMEOUT);
-	bleSendCommand("AT+BAUD=9600\r\n", "OK", BLE_AT_TIMEOUT);
+	blePrintString("CMD+RESET=0\r\n");
+	delayCyclesUl(BLE_COMMAND_DELAY);
+	blePrintString("CMD+NAME=SmartMoisture\r\n");
+	delayCyclesUl(BLE_COMMAND_DELAY);
+	blePrintString("CMD+ADV=1\r\n");
+	delayCyclesUl(BLE_COMMAND_DELAY);
+	blePrintString("CMD+NOTIFY=1\r\n");
+	delayCyclesUl(BLE_COMMAND_DELAY);
+
 	oledClear();
 	oledDrawString(0, 0, "BLE: Ready");
 
 	while (1)
 	{
-		_bis_SR_register(LPM3_bits | GIE);
-		const uint8_t irqLevel = (BLE_IRQ_PORT & BLE_IRQ_PIN) ? 1u : 0u;
+		_bis_SR_register(LPM0_bits | GIE);
+		oledShowLastRx8();
 
-		if (irqLevel != bleIrqPrevLevel)
+		if (bleLineReady)
 		{
-			bleIrqPrevLevel = irqLevel;
-			bleConnected = irqLevel;
+			char local[BLE_BUFFER_SIZE];
 
-			if (bleConnected)
-			{
-				BLE_WAKE_PORT |= BLE_WAKE_PIN;
-				oledDrawString(0, 0, "BLE: Connected");
-			}
-			else
-			{
-				BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
-				oledDrawString(0, 0, "BLE: Disconnected");
-			}
+			__disable_interrupt();
+			uint8_t n = bleLineLen;
+			for (uint8_t i = 0; i <= n; ++i) local[i] = bleLine[i];
+			bleLineLen = 0;
+			bleLineReady = 0;
+			__enable_interrupt();
 
-			LED_PORT ^= LED_PIN;
-			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
-		}
+			oledDrawString(0, 2, local);
+			if (strncmp(local, "EVT+CON", 7) == 0) oledDrawString(0, 0, "BLE: Connected");
+			else if (strncmp(local, "EVT+DISCON", 10) == 0) oledDrawString(0, 0, "BLE: Disconnected");
+		} // TODO: check why this aint showing
 
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
@@ -198,7 +180,7 @@ int main(void)
 
 			oledDrawString(0, 1, faultMsg);
 			LED_PORT ^= LED_PIN;
-			delayCyclesUl(BLE_FAULT_BLINK_DELAY);
+			delayCyclesUl(FAULT_BLINK_DELAY);
 
 			maxWriteReg(MAX_REG_CONF, 0xD3);
 			maxWriteReg(MAX_REG_CONF, 0xD1);
@@ -227,12 +209,25 @@ __attribute__((interrupt(USCI_A0_VECTOR))) void USCI_A0_ISR(void)
 {
 	if (UCA0IFG & UCRXIFG)
 	{
-		const char c = (char)UCA0RXBUF;
-		bleRxBuffer[bleRxHead] = c;
-		bleRxHead = (uint8_t)((bleRxHead + 1u) % BLE_RX_BUFFER_SIZE);
+		const uint8_t c = UCA0RXBUF;
+		if (!bleLineReady)
+		{
+			if (c == '\r')
+			{
+				bleLine[bleLineLen < BLE_BUFFER_SIZE ? bleLineLen : BLE_BUFFER_SIZE - 1] = '\0';
+				bleLineReady = 1;
+			}
+			else if (c != '\n')
+			{
+				if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
+				else bleLineLen = 0;
+			}
+		}
 
-		if (bleRxCount < BLE_RX_BUFFER_SIZE) bleRxCount++;
+		bleRxBuffer[bleRxHead] = c;
+		bleRxHead = (uint8_t)((bleRxHead + 1u) % BLE_BUFFER_SIZE);
+		if (bleRxCount < BLE_BUFFER_SIZE) bleRxCount++;
 	}
 }
 
-__attribute__((interrupt(TIMER0_A0_VECTOR))) void TIMER0_A0_ISR(void) { _bic_SR_register_on_exit(LPM3_bits); }
+__attribute__((interrupt(TIMER0_A0_VECTOR))) void TIMER0_A0_ISR(void) { _bic_SR_register_on_exit(LPM0_bits); }

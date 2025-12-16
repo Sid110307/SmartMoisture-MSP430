@@ -41,7 +41,7 @@ devices.
 - VCC - 3.3V
 - GND - GND
 
-### BLE Module (nRF52810):
+### BLE Module (nRF52810, UART @ 115200 bps):
 
 - BLE_WAKE - P2.2
 - BLE_IRQ - P3.1
