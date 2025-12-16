@@ -10,7 +10,7 @@
 
 static volatile uint8_t bleRxBuffer[BLE_BUFFER_SIZE];
 static volatile char bleLine[BLE_BUFFER_SIZE];
-static volatile uint8_t bleRxHead = 0, bleRxCount = 0, bleLineLen = 0, bleLineReady = 0;
+static volatile uint8_t bleRxHead = 0, bleRxCount = 0, bleLineLen = 0, bleLineReady = 0, bleConnected = 0;
 
 static void adcInit(void)
 {
@@ -65,9 +65,11 @@ static void bleUartInit(void)
 	UCA0CTLW0 = UCSWRST;
 	UCA0CTLW0 |= UCSSEL__SMCLK;
 
-	UCA0BRW = 6;
-	UCA0MCTLW = UCOS16 | UCBRF_8 | 0x20;
+	UCA0BR0 = 8;
+	UCA0MCTLW = 0xD600;
+	UCA0BR1 = 0;
 	UCA0CTLW0 &= ~UCSWRST;
+	UCA0IE |= UCRXIE;
 }
 
 static void blePrintChar(const char c)
@@ -90,29 +92,6 @@ static void bleSendMeasurement(const float tempC, const int adcRaw)
 	if (n > 0) blePrintString(buf);
 }
 
-static void oledShowLastRx8(void)
-{
-	uint8_t head, cnt;
-	__disable_interrupt();
-	head = bleRxHead;
-	cnt = bleRxCount;
-	__enable_interrupt();
-
-	char line[32];
-	uint8_t b[8] = {0};
-
-	uint8_t n = (cnt < 8) ? cnt : 8;
-	for (uint8_t k = 0; k < n; k++)
-	{
-		uint8_t idx = (uint8_t)((head + BLE_BUFFER_SIZE - n + k) % BLE_BUFFER_SIZE);
-		b[k] = (uint8_t)bleRxBuffer[idx];
-	}
-
-	snprintf(line, sizeof(line), "C%u%02X%02X%02X%02X%02X%02X%02X%02X", cnt, b[0], b[1], b[2], b[3], b[4], b[5], b[6],
-	         b[7]);
-	oledDrawString(0, 2, line);
-}
-
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
@@ -129,8 +108,6 @@ int main(void)
 	maxInit();
 	adcInit();
 	bleUartInit();
-
-	UCA0IE |= UCRXIE;
 	__enable_interrupt();
 
 	BLE_RESET_PORT &= ~BLE_RESET_PIN;
@@ -154,8 +131,6 @@ int main(void)
 	while (1)
 	{
 		_bis_SR_register(LPM0_bits | GIE);
-		oledShowLastRx8();
-
 		if (bleLineReady)
 		{
 			char local[BLE_BUFFER_SIZE];
@@ -167,10 +142,18 @@ int main(void)
 			bleLineReady = 0;
 			__enable_interrupt();
 
-			oledDrawString(0, 2, local);
-			if (strncmp(local, "EVT+CON", 7) == 0) oledDrawString(0, 0, "BLE: Connected");
-			else if (strncmp(local, "EVT+DISCON", 10) == 0) oledDrawString(0, 0, "BLE: Disconnected");
-		} // TODO: check why this aint showing
+			oledDrawString(0, 5, local);
+			if (strncmp(local, "EVT+CON", 7) == 0)
+			{
+				bleConnected = 1;
+				oledDrawString(0, 0, "BLE: Connected");
+			}
+			else if (strncmp(local, "EVT+DISCON", 10) == 0)
+			{
+				bleConnected = 0;
+				oledDrawString(0, 0, "BLE: Disconnected");
+			}
+		}
 
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
@@ -196,7 +179,7 @@ int main(void)
 		if (tempFrac < 0) tempFrac = -tempFrac;
 
 		char line1[20], line2[20];
-		bleSendMeasurement(tDegC, adcRaw);
+		if (bleConnected) bleSendMeasurement(tDegC, adcRaw);
 
 		snprintf(line1, sizeof(line1), "Temp: %d.%02d C", tempX100 / 100, tempFrac);
 		snprintf(line2, sizeof(line2), "ADC:  %u", adcRaw);
