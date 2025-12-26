@@ -1,5 +1,4 @@
 #include "./include/max.h"
-#include "./include/oled.h"
 
 static void spiInit(void)
 {
@@ -9,12 +8,8 @@ static void spiInit(void)
 	MAX_CS_DIR |= MAX_CS_PIN;
 	MAX_CS_PORT |= MAX_CS_PIN;
 
-	MAX_DRDY_DIR &= ~MAX_DRDY_PIN;
-	MAX_DRDY_REN |= MAX_DRDY_PIN;
-	MAX_DRDY_OUT |= MAX_DRDY_PIN;
-
 	UCA1CTLW0 = UCSWRST;
-	UCA1CTLW0 |= UCSYNC | UCMST | UCMSB | UCSSEL__SMCLK;
+	UCA1CTLW0 |= UCSYNC | UCMST | UCMSB | UCCKPH | UCSSEL__SMCLK;
 	UCA1BRW = 2;
 	UCA1CTLW0 &= ~UCSWRST;
 }
@@ -46,21 +41,15 @@ static void maxReadMulti(const uint8_t start, uint8_t* buf, const uint8_t len)
 	csHigh();
 }
 
-static uint8_t maxWaitDrdy(void)
-{
-	for (uint16_t i = 0; i < 32; ++i)
-	{
-		if (!(MAX_DRDY_PORT & MAX_DRDY_PIN)) return 1;
-		delayCyclesUl(5000UL);
-	}
-	return 0;
-}
-
 void maxInit(void)
 {
 	spiInit();
-	delayCyclesUl(100000UL);
 
+	MAX_DRDY_DIR &= ~MAX_DRDY_PIN;
+	MAX_DRDY_REN |= MAX_DRDY_PIN;
+	MAX_DRDY_OUT |= MAX_DRDY_PIN;
+
+	delayCyclesUl(100000UL);
 	maxWriteReg(MAX_REG_CONF, 0xD1);
 	maxWriteReg(MAX_REG_CONF, 0xD3);
 	maxWriteReg(MAX_REG_CONF, 0xD1);
@@ -68,16 +57,13 @@ void maxInit(void)
 	(void)maxReadReg(MAX_REG_FAULT);
 }
 
+uint8_t maxIsReady(void) { return (uint8_t)!(MAX_DRDY_PORT & MAX_DRDY_PIN); }
+
 float maxReadRtdTemp(void)
 {
 	uint8_t buf[2];
-	if (!maxWaitDrdy())
-	{
-		oledDrawString(0, 1, "MAX: Not ready");
-		return 0.0f;
-	}
-
 	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
+
 	uint16_t raw = (uint16_t)buf[0] << 8 | buf[1];
 	raw >>= 1;
 
