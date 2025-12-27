@@ -44,7 +44,7 @@ static void clockInit(void)
 	CSCTL1 = DCOFTRIMEN | DCORSEL_0;
 	CSCTL2 = FLLD_0 | 30;
 
-	delayCyclesUl(3UL);
+	delayCyclesUl(763UL);
 	__bic_SR_register(SCG0);
 	CSCTL4 = SELMS__DCOCLKDIV | SELA__REFOCLK;
 }
@@ -193,12 +193,22 @@ int main(void)
 		if (!tick) continue;
 		tick = 0;
 
-		if (!bleConnected && ++bleInitCountdown >= BLE_INIT_TICKS)
+		if (!bleConnected)
 		{
-			bleInitCountdown = 0;
-			bleInitPending = 1;
+			if (++bleInitCountdown >= BLE_INIT_TICKS)
+			{
+				bleInitCountdown = 0;
+				bleInitPending = 1;
+			}
 		}
 		else bleInitCountdown = 0;
+
+		const uint16_t adcRaw = adcReadRaw();
+		float tDegC = maxReadRtdTemp();
+
+		int tempX100 = (int)(tDegC * 100.0f);
+		int tempFrac = tempX100 % 100;
+		if (tempFrac < 0) tempFrac = -tempFrac;
 
 		const uint8_t fault = maxReadReg(MAX_REG_FAULT);
 		if (fault != 0)
@@ -210,24 +220,11 @@ int main(void)
 			LED_PORT ^= LED_PIN;
 			delayCyclesUl(FAULT_BLINK_DELAY);
 
-			maxWriteReg(MAX_REG_CONF, 0xD3);
-			maxWriteReg(MAX_REG_CONF, 0xD1);
+			maxInit();
+			delayCyclesUl(BLE_SAMPLE_DELAY);
 
 			continue;
 		}
-
-		if (!maxIsReady())
-		{
-			oledDrawString(0, 1, "MAX: Not ready");
-			continue;
-		}
-
-		const uint16_t adcRaw = adcReadRaw();
-		float tDegC = maxReadRtdTemp();
-
-		int tempX100 = (int)(tDegC * 100.0f);
-		int tempFrac = tempX100 % 100;
-		if (tempFrac < 0) tempFrac = -tempFrac;
 
 		char line1[20], line2[20];
 		if (bleConnected) bleSendMeasurement(tDegC, adcRaw);

@@ -7,16 +7,20 @@
 #define MAX_CS_DIR P2DIR
 #define MAX_CS_PIN BIT3
 
-#define MAX_DRDY_PORT P3IN
-#define MAX_DRDY_DIR P3DIR
-#define MAX_DRDY_REN P3REN
-#define MAX_DRDY_OUT P3OUT
-#define MAX_DRDY_PIN BIT2
-
 #define MAX_REG_CONF 0x00
 #define MAX_REG_RTD_MSB 0x01
 #define MAX_REG_RTD_LSB 0x02
 #define MAX_REG_FAULT 0x07
+
+#define MAX_CFG_BIAS 0x80
+#define MAX_CFG_AUTO 0x40
+#define MAX_CFG_1SHOT 0x20
+#define MAX_CFG_3WIRE 0x10
+#define MAX_CFG_FAULT 0x02
+#define MAX_CFG_50HZ 0x01
+
+#define CVD_A (3.9083e-3f)
+#define CVD_B (-5.775e-7f)
 
 #define ADC_INPUT_CTL ADCPCTL6
 #define ADC_INPUT_CHANNEL ADCINCH_6
@@ -45,9 +49,9 @@
 #define BLE_TXSEL_BIT BIT4
 #define BLE_RXSEL_BIT BIT5
 
-#define BLE_COMMAND_DELAY 20000UL
-#define BLE_SAMPLE_DELAY 200000UL
-#define FAULT_BLINK_DELAY 30000UL
+#define BLE_COMMAND_DELAY 10000UL
+#define BLE_SAMPLE_DELAY 250000UL
+#define FAULT_BLINK_DELAY 125000UL
 
 static void delayCyclesUl(uint32_t n)
 {
