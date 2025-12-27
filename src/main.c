@@ -7,12 +7,13 @@
 #include "./include/oled.h"
 
 #define BLE_BUFFER_SIZE 64
-#define BLE_INIT_TICKS 25
 
 static volatile char bleLine[BLE_BUFFER_SIZE];
-static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0;
+static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0;
+static volatile uint16_t resetCount = 100;
+
 static uint8_t bleConnected = 0;
-static uint16_t bleInitCountdown = 0;
+static uint16_t sampleCountdown = 0;
 
 static void adcInit(void)
 {
@@ -94,18 +95,37 @@ static void blePrintChar(const char c)
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
 
+static void handleBleResponse(const char* line)
+{
+	if (bleConnected) return;
+	if (strncmp(line, "RSP", 3) == 0)
+	{
+		ack++;
+		if (ack > 5) ack = 0;
+	}
+}
+
 static void bleInitSequence(void)
 {
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-
-	blePrintString("CMD+RESET=0\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
-	blePrintString("CMD+NAME=SmartMoisture\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
-	blePrintString("CMD+ADV=1\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
-	blePrintString("CMD+NOTIFY=1\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	switch (ack)
+	{
+		case 0:
+		case 2:
+			blePrintString("CMD+RESET=0\r\n");
+			break;
+		case 1:
+			blePrintString("CMD+NAME=SmartMoisture\r\n");
+			break;
+		case 3:
+			blePrintString("CMD+ADV=1\r\n");
+			break;
+		case 4:
+			blePrintString("CMD+NOTIFY=1\r\n");
+			break;
+		default:
+			break;
+	}
 }
 
 static void bleSendMeasurement(const float tempC, const int adcRaw)
@@ -166,26 +186,30 @@ int main(void)
 			if (n >= BLE_BUFFER_SIZE) n = BLE_BUFFER_SIZE - 1;
 
 			memcpy(local, (const void*)bleLine, n);
-			local[n] = '\0';
-
 			bleLineLen = 0;
 			bleLineReady = 0;
-			__enable_interrupt();
 
-			oledDrawString(0, 5, local);
-			if (strncmp(local, "EVT+READY", 9) == 0) bleInitPending = 1;
+			__enable_interrupt();
+			local[n] = '\0';
+
+			if (strncmp(local, "EVT+READY", 9) == 0)
+			{
+				ack = 0;
+				bleInitPending = 1;
+			}
+			else if (strncmp(local, "RSP", 3) == 0)
+			{
+				handleBleResponse(local);
+				if (!bleConnected && ack <= 3) bleInitPending = 1;
+			}
 			else if (strncmp(local, "EVT+CON", 7) == 0)
 			{
 				bleConnected = 1;
-				bleInitCountdown = 0;
-
 				oledDrawString(0, 0, "BLE: Connected");
 			}
 			else if (strncmp(local, "EVT+DISCON", 10) == 0)
 			{
 				bleConnected = 0;
-				bleInitCountdown = 0;
-
 				oledDrawString(0, 0, "BLE: Disconnected");
 			}
 		}
@@ -193,15 +217,17 @@ int main(void)
 		if (!tick) continue;
 		tick = 0;
 
+		if (sampleCountdown) sampleCountdown--;
 		if (!bleConnected)
 		{
-			if (++bleInitCountdown >= BLE_INIT_TICKS)
+			if (--resetCount == 0)
 			{
-				bleInitCountdown = 0;
+				resetCount = 100;
+				ack = 0;
 				bleInitPending = 1;
 			}
 		}
-		else bleInitCountdown = 0;
+		else resetCount = 100;
 
 		const uint16_t adcRaw = adcReadRaw();
 		float tDegC = maxReadRtdTemp();
@@ -227,7 +253,11 @@ int main(void)
 		}
 
 		char line1[20], line2[20];
-		if (bleConnected) bleSendMeasurement(tDegC, adcRaw);
+		if (bleConnected && sampleCountdown == 0)
+		{
+			bleSendMeasurement(tDegC, adcRaw);
+			sampleCountdown = 5;
+		}
 
 		snprintf(line1, sizeof(line1), "Temp: %d.%02d C", tempX100 / 100, tempFrac);
 		snprintf(line2, sizeof(line2), "ADC:  %u", adcRaw);
@@ -254,7 +284,7 @@ void USCI_A0_ISR(void)
 			const uint8_t c = (uint8_t)UCA0RXBUF;
 			if (!bleLineReady)
 			{
-				if (c == '\r')
+				if (c == '\r' || c == '\n')
 				{
 					if (bleOverflow)
 					{
@@ -267,7 +297,7 @@ void USCI_A0_ISR(void)
 						bleLineReady = 1;
 					}
 				}
-				else if (c != '\n' && !bleOverflow)
+				else if (!bleOverflow)
 				{
 					if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
 					else bleOverflow = 1;

@@ -125,5 +125,7 @@ void maxWriteReg(const uint8_t regAddr, const uint8_t value)
 	csLow();
 	spiTransfer(0x80 | (regAddr & 0x7F));
 	spiTransfer(value);
+
+	while (UCA1STATW & UCBUSY);
 	csHigh();
 }
