@@ -25,6 +25,8 @@ compilers:
 #define __SIZEOF_POINTER__ 2
 #define __ORDER_LITTLE_ENDIAN__ 1234
 #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#define __bic_SR_register_on_exit(x) __bic_SR_register(x)
+#define __bis_SR_register_on_exit(x) __bis_SR_register(x)
 "
   - description: CPP14 MSP430 GCC
     match-sources: ".*\\.cpp"
@@ -54,5 +56,7 @@ compilers:
 #define __SIZEOF_POINTER__ 2
 #define __ORDER_LITTLE_ENDIAN__ 1234
 #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
+#define __bic_SR_register_on_exit(x) __bic_SR_register(x)
+#define __bis_SR_register_on_exit(x) __bis_SR_register(x)
 #define __cplusplus 201402L
 "

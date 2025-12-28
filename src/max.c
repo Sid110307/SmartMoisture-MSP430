@@ -69,7 +69,7 @@ static float maxTempFromResistance(const float Rt)
 void maxInit(void)
 {
 	spiInit();
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 
 	uint8_t cfg = 0;
 	cfg |= MAX_CFG_3WIRE;
@@ -89,10 +89,10 @@ float maxReadRtdTemp(void)
 	t &= ~MAX_CFG_AUTO;
 	maxWriteReg(MAX_REG_CONF, t);
 
-	delayCyclesUl(2500UL);
+	delayMs(10);
 	t |= MAX_CFG_1SHOT;
 	maxWriteReg(MAX_REG_CONF, t);
-	delayCyclesUl(20000UL);
+	delayMs(80);
 
 	uint8_t buf[2];
 	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);

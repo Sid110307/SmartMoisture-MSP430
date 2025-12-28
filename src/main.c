@@ -42,18 +42,17 @@ static void clockInit(void)
 	__bis_SR_register(SCG0);
 
 	CSCTL3 = SELREF__REFOCLK;
-	CSCTL1 = DCOFTRIMEN | DCORSEL_0;
-	CSCTL2 = FLLD_0 | 30;
+	CSCTL1 = DCOFTRIMEN | DCOFTRIM0 | DCOFTRIM1 | DCORSEL_3;
+	CSCTL2 = FLLD_0 | 243;
 
-	delayCyclesUl(763UL);
 	__bic_SR_register(SCG0);
 	CSCTL4 = SELMS__DCOCLKDIV | SELA__REFOCLK;
 }
 
 static void timerInit(void)
 {
-	TA0CTL = TASSEL__ACLK | MC__UP | TACLR;
-	TA0CCR0 = 32768 / 5;
+	TA0CTL = TASSEL__ACLK | MC__CONTINUOUS | TACLR;
+	TA0CCR0 = TA0R + (32768 / 5);
 	TA0CCTL0 = CCIE;
 }
 
@@ -81,10 +80,32 @@ static void bleUartInit(void)
 	UCA0CTLW0 = UCSWRST;
 	UCA0CTLW0 |= UCSSEL__SMCLK;
 
-	UCA0BRW = 104;
-	UCA0MCTLW = 0xD600;
+	UCA0BRW = 4;
+	UCA0MCTLW = UCOS16 | (5 << 4) | (0x55 << 8);
+	UCA0IFG &= ~UCRXIFG;
 	UCA0CTLW0 &= ~UCSWRST;
+
+	delayMs(10);
 	UCA0IE |= UCRXIE;
+}
+
+static uint8_t bleGetLine(char* out, uint8_t outSize)
+{
+	if (!bleLineReady) return 0;
+	__disable_interrupt();
+
+	uint8_t n = bleLineLen;
+	if (n >= outSize) n = outSize - 1;
+
+	for (uint8_t i = 0; i < n; ++i) out[i] = bleLine[i];
+	out[n] = '\0';
+
+	bleLineLen = 0;
+	bleLineReady = 0;
+	bleOverflow = 0;
+
+	__enable_interrupt();
+	return 1;
 }
 
 static void blePrintChar(const char c)
@@ -98,17 +119,18 @@ static void blePrintString(const char* str) { while (*str) blePrintChar(*str++);
 static void bleInitSequence(void)
 {
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
+	ack = 0;
 
 	blePrintString("CMD+RESET=0\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 	blePrintString("CMD+NAME=SmartMoisture\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 	blePrintString("CMD+RESET=0\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 	blePrintString("CMD+ADV=1\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 	blePrintString("CMD+NOTIFY=1\r\n");
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 }
 
 static void bleSendMeasurement(const float tempC, const int adcRaw)
@@ -136,6 +158,7 @@ int main(void)
 	oledClear();
 	oledDrawString(0, 3, "  SmartMoisture v2.0");
 	oledDrawString(0, 4, "  Indriya Sensotech");
+	delayMs(1000);
 
 	maxInit();
 	adcInit();
@@ -143,55 +166,45 @@ int main(void)
 	__enable_interrupt();
 
 	BLE_RESET_PORT &= ~BLE_RESET_PIN;
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 	BLE_RESET_PORT |= BLE_RESET_PIN;
-	delayCyclesUl(BLE_COMMAND_DELAY);
+	delayMs(BLE_COMMAND_DELAY);
 
-	bleInitPending = 1;
 	oledClear();
 	oledDrawString(0, 0, "BLE: Ready");
 
 	while (1)
 	{
 		__bis_SR_register(LPM0_bits | GIE);
+		char line[BLE_BUFFER_SIZE];
 
-		if (bleLineReady)
+		if (bleGetLine(line, sizeof(line)))
 		{
-			char local[BLE_BUFFER_SIZE];
+			oledDrawString(0, 2, line);
 
-			__disable_interrupt();
-			uint8_t n = bleLineLen;
-			if (n >= BLE_BUFFER_SIZE) n = BLE_BUFFER_SIZE - 1;
-
-			memcpy(local, (const void*)bleLine, n);
-			bleLineLen = 0;
-			bleLineReady = 0;
-			__enable_interrupt();
-
-			oledDrawString(0, 2, local);
-			if (strncmp(local, "EVT+READY", 9) == 0)
+			if (strncmp(line, "EVT+READY", 9) == 0)
 			{
+				bleConnected = 0;
 				ack = 0;
 				bleInitPending = 1;
+				resetCount = 0;
 			}
-			else if (strncmp(local, "RSP", 3) == 0)
+			else if (strncmp(line, "RSP", 3) == 0)
 			{
 				ack++;
-				if (ack > 5) ack = 0;
-				if (!bleConnected) bleInitPending = 1;
+				if (ack > 4) ack = 0;
 			}
-			else if (strncmp(local, "EVT+CON", 7) == 0)
+			else if (strncmp(line, "EVT+CON", 7) == 0)
 			{
 				bleConnected = 1;
 				oledDrawString(0, 0, "BLE: Connected");
 			}
-			else if (strncmp(local, "EVT+DISCON", 10) == 0)
+			else if (strncmp(line, "EVT+DISCON", 10) == 0)
 			{
 				bleConnected = 0;
 				ack = 0;
 				bleInitPending = 1;
 				resetCount = 25;
-
 				oledDrawString(0, 0, "BLE: Disconnected");
 			}
 		}
@@ -200,22 +213,20 @@ int main(void)
 		tick = 0;
 
 		if (sampleCountdown) sampleCountdown--;
-		if (bleInitPending)
-		{
-			bleInitSequence();
-			bleInitPending = 0;
-		}
-
 		if (!bleConnected)
 		{
-			if (--resetCount == 0)
+			if (resetCount == 0)
 			{
 				resetCount = 25;
-				ack = 0;
-				bleInitPending = 1;
+				if (bleInitPending) bleInitSequence();
 			}
+			else resetCount--;
 		}
-		else resetCount = 25;
+		else
+		{
+			resetCount = 25;
+			bleInitPending = 0;
+		}
 
 		const uint16_t adcRaw = adcReadRaw();
 		float tDegC = maxReadRtdTemp();
@@ -232,10 +243,10 @@ int main(void)
 
 			oledDrawString(0, 1, faultMsg);
 			LED_PORT ^= LED_PIN;
-			delayCyclesUl(FAULT_BLINK_DELAY);
+			delayMs(FAULT_BLINK_DELAY);
 
 			maxInit();
-			delayCyclesUl(BLE_SAMPLE_DELAY);
+			delayMs(BLE_SAMPLE_DELAY);
 
 			continue;
 		}
@@ -270,25 +281,42 @@ void USCI_A0_ISR(void)
 		case USCI_UART_UCRXIFG:
 		{
 			const uint8_t c = (uint8_t)UCA0RXBUF;
+			LED_PORT ^= LED_PIN; // TODO: Remove
 
-			if (bleLineReady == 0)
+			if (c == 0)
 			{
-				if (c == '\r' || c == '\n')
-				{
-					if (bleLineLen > 0)
-					{
-						if (bleLineLen >= BLE_BUFFER_SIZE) bleLineLen = BLE_BUFFER_SIZE - 1;
+				__bic_SR_register_on_exit(LPM0_bits);
+				return;
+			}
 
-						bleLine[bleLineLen] = '\0';
-						bleLineReady = 1;
-					}
-					bleOverflow = 0;
-				}
-				else if (c != 0 && !bleOverflow)
+			if (bleLineReady)
+			{
+				bleLineReady = 0;
+				bleLineLen = 0;
+				bleOverflow = 0;
+			}
+
+			if (c == '\r' || c == '\n')
+			{
+				if (bleLineLen > 0)
 				{
-					if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
-					else bleOverflow = 1;
+					if (bleLineLen >= BLE_BUFFER_SIZE) bleLineLen = BLE_BUFFER_SIZE - 1;
+
+					bleLine[bleLineLen] = '\0';
+					bleLineReady = 1;
 				}
+				else bleLineLen = 0;
+
+				bleOverflow = 0;
+				__bic_SR_register_on_exit(LPM0_bits);
+
+				return;
+			}
+
+			if (!bleOverflow)
+			{
+				if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
+				else bleOverflow = 1;
 			}
 
 			__bic_SR_register_on_exit(LPM0_bits);
@@ -310,6 +338,8 @@ __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #endif
 void TIMER0_A0_ISR(void)
 {
+	TA0CCR0 += (32768 / 5);
 	tick = 1;
+
 	__bic_SR_register_on_exit(LPM0_bits);
 }

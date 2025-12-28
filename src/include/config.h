@@ -49,12 +49,24 @@
 #define BLE_TXSEL_BIT BIT4
 #define BLE_RXSEL_BIT BIT5
 
-#define BLE_COMMAND_DELAY 10000UL
-#define BLE_SAMPLE_DELAY 250000UL
-#define FAULT_BLINK_DELAY 125000UL
+#define BLE_COMMAND_DELAY 500
+#define BLE_SAMPLE_DELAY 500
+#define FAULT_BLINK_DELAY 250
 
-static void delayCyclesUl(uint32_t n)
+static void delayA0(const uint16_t ticks)
 {
-	while (n--)
-		__no_operation();
+	const uint16_t start = TA0R;
+	while ((uint16_t)(TA0R - start) < ticks);
+}
+
+static void delayMs(const uint16_t ms)
+{
+	uint32_t ticks = ((uint32_t)ms * 32768UL + 500UL) / 1000UL;
+	while (ticks)
+	{
+		const uint16_t chunk = (ticks > 60000UL) ? 60000U : (uint16_t)ticks;
+
+		delayA0(chunk);
+		ticks -= chunk;
+	}
 }
