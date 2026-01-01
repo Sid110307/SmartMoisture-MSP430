@@ -3,6 +3,6 @@
 #include "./config.h"
 
 void maxInit(void);
-float maxReadRtdTemp(void);
+int maxReadRtdTemp(void);
 uint8_t maxReadReg(uint8_t regAddr);
 void maxWriteReg(uint8_t regAddr, uint8_t value);

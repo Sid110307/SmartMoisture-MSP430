@@ -24,9 +24,6 @@
 #define MAX_CFG_FAULT 0x02
 #define MAX_CFG_50HZ 0x01
 
-#define CVD_A (3.9083e-3f)
-#define CVD_B (-5.775e-7f)
-
 #define OLED_ADDR 0x3C
 
 #define LED_PORT P1OUT

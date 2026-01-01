@@ -77,7 +77,7 @@ The BLE device's pairing pin is `123456`.
 |STOP|Stop periodic sampling|`STOP*HH\r\n`|`OK STOP\r\n`|
 |RATE n|Set sampling rate to n seconds|`RATE 30*HH\r\n`|`OK RATE\r\n`|
 |SEQ n|Set sequence number to n|`SEQ 42*HH\r\n`|`OK SEQ\r\n`|
-|GET|Get current sample and config|`GET*HH\r\n`|`OK s:0,t:1,m:1023,r:30\r\n`|
+|GET|Get most recent sample and config|`GET*HH\r\n`|`OK s:0,t:1,m:1023,r:30\r\n`|
 |RESET|Reset the BLE module|`RESET*HH\r\n`|No response|
 
 Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string.

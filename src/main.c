@@ -163,14 +163,13 @@ static void bleInitSequence(void)
 	}
 }
 
-static void tempPartsFromX100(int tempX100, int* whole, int* frac2)
+static void tempStrFromX100(int tempX100, char* out, unsigned outSize)
 {
 	int w = tempX100 / 100;
 	int f = tempX100 % 100;
-	if (f < 0) f = -f;
 
-	*whole = w;
-	*frac2 = f;
+	if (f < 0) f = -f;
+	snprintf(out, outSize, "%d.%02d", w, f);
 }
 
 static void readSensors(SensorSnapshot* s)
@@ -185,17 +184,14 @@ static void readSensors(SensorSnapshot* s)
 
 #if defined(ENABLE_MAX)
 	s->maxFault = maxReadReg(MAX_REG_FAULT);
-	if (s->maxFault == 0)
-	{
-		float tDegC = maxReadRtdTemp();
-		s->tempX100 = (int)(tDegC * 100.0f);
-	}
+	if (s->maxFault == 0) s->tempX100 = maxReadRtdTemp();
 #endif
 }
 
 static uint8_t checksum(const char* s)
 {
 	uint8_t x = 0;
+
 	while (*s) x ^= (uint8_t)(*s++);
 	return x;
 }
@@ -234,11 +230,11 @@ static uint8_t verifyChecksum(char* cmd)
 
 static void bleSendMeasurement(int tempX100, uint16_t adcRaw)
 {
-	int whole, frac;
-	tempPartsFromX100(tempX100, &whole, &frac);
+	char tbuf[12];
+	tempStrFromX100(tempX100, tbuf, sizeof(tbuf));
 
 	char payload[48];
-	int n = snprintf(payload, sizeof(payload), "{\"s\":%u,\"t\":%d.%02d,\"m\":%u}", seq++, whole, frac, adcRaw);
+	int n = snprintf(payload, sizeof(payload), "{\"s\":%u,\"t\":%s,\"m\":%u}", seq++, tbuf, adcRaw);
 	if (n <= 0) return;
 
 	uint8_t cs = checksum(payload);
@@ -247,7 +243,7 @@ static void bleSendMeasurement(int tempX100, uint16_t adcRaw)
 	if (m > 0) blePrintString(frame);
 }
 
-static void handleCommand(char* cmd)
+static void handleCommand(char* cmd, const SensorSnapshot* s)
 {
 	if (!verifyChecksum(cmd))
 	{
@@ -289,14 +285,11 @@ static void handleCommand(char* cmd)
 	}
 	else if (strncmp(cmd, "GET", 3) == 0)
 	{
-		SensorSnapshot s;
-		readSensors(&s);
-
-		int whole, frac;
-		tempPartsFromX100(s.tempX100, &whole, &frac);
+		char tbuf[12];
+		tempStrFromX100(s->tempX100, tbuf, sizeof(tbuf));
 
 		char response[64];
-		int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%d.%02d,m:%u,r:%u\r\n", seq, whole, frac, s.adcRaw, sampleEveryTicks / SAMPLE_TICK);
+		int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tbuf, s->adcRaw, sampleEveryTicks / SAMPLE_TICK);
 		if (n > 0) blePrintString(response);
 	}
 	else if (strncmp(cmd, "RESET", 5) == 0)
@@ -356,12 +349,15 @@ int main(void)
 	{
 		__bis_SR_register(LPM0_bits | GIE);
 
+		SensorSnapshot s;
+		readSensors(&s);
+
 #if defined(ENABLE_BLE)
 		char line[BLE_BUFFER_SIZE];
 
 		if (bleGetLine(line, sizeof(line)))
 		{
-			if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11);
+			if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11, &s);
 			else if (strncmp(line, "EVT+READY", 9) == 0)
 			{
 				bleConnected = 0;
@@ -418,9 +414,6 @@ int main(void)
 		}
 #endif
 
-		SensorSnapshot s;
-		readSensors(&s);
-
 		if (s.maxFault != 0)
 		{
 			char faultMsg[16];
@@ -447,10 +440,10 @@ int main(void)
 
 #if defined(ENABLE_OLED)
 		char line1[20], line2[20];
-		int whole, frac;
-		tempPartsFromX100(s.tempX100, &whole, &frac);
+		char tbuf[12];
+		tempStrFromX100(s.tempX100, tbuf, sizeof(tbuf));
 
-		snprintf(line1, sizeof(line1), "Temp: %d.%02d C", whole, frac);
+		snprintf(line1, sizeof(line1), "Temp: %s C", tbuf);
 		snprintf(line2, sizeof(line2), "ADC:  %u", s.adcRaw);
 
 		oledDrawString(0, 3, line1);

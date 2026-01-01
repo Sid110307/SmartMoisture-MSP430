@@ -55,17 +55,6 @@ static void maxClearFault(void)
 	maxWriteReg(MAX_REG_CONF, t);
 }
 
-static float maxTempFromResistance(const float Rt)
-{
-	const float R0 = 100.0f;
-
-	const float T = (Rt / R0 - 1.0f) / CVD_A;
-	const float f = R0 * (1.0f + CVD_A * T + CVD_B * T * T) - Rt;
-	const float fp = R0 * (CVD_A + 2.0f * CVD_B * T);
-
-	return T - f / fp;
-}
-
 void maxInit(void)
 {
 	spiInit();
@@ -80,7 +69,7 @@ void maxInit(void)
 	(void)maxReadReg(MAX_REG_FAULT);
 }
 
-float maxReadRtdTemp(void)
+int maxReadRtdTemp(void)
 {
 	maxClearFault();
 
@@ -103,9 +92,10 @@ float maxReadRtdTemp(void)
 
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
-	const float Rt = (float)raw * 430.0f / 32768.0f;
 
-	return maxTempFromResistance(Rt);
+	const uint32_t Rref = 430000;
+	long Rt = (long)(((uint64_t)raw * Rref) / 32768ULL);
+	return (int)((Rt - 100000) * 26 / 10);
 }
 
 uint8_t maxReadReg(const uint8_t regAddr)
