@@ -2,26 +2,28 @@
 #include <string.h>
 #include <msp430.h>
 
+#define OLED
+
 #include "./include/config.h"
 #include "./include/max.h"
 #include "./include/oled.h"
 
 #define BLE_BUFFER_SIZE 64
+#define SAMPLE_TICK 5
 
 static volatile char bleLine[BLE_BUFFER_SIZE];
-static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0;
-static volatile uint16_t resetCount = 25;
+static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0, resetCount = 25;
 
 static uint8_t bleConnected = 0;
 static uint16_t sampleCountdown = 0;
 
 static void adcInit(void)
 {
-	SYSCFG2 |= ADC_INPUT_CTL;
-	ADCCTL0 = ADC_SHT_SETTING;
+	SYSCFG2 |= ADCPCTL6;
+	ADCCTL0 = ADCSHT_2;
 	ADCCTL1 = ADCSHP;
-	ADCCTL2 = ADC_RES_SETTING;
-	ADCMCTL0 = ADC_INPUT_CHANNEL | ADC_REF_SELECT;
+	ADCCTL2 = ADCRES_1;
+	ADCMCTL0 = ADCINCH_6 | ADCSREF_0;
 }
 
 static uint16_t adcReadRaw(void)
@@ -52,8 +54,9 @@ static void clockInit(void)
 static void timerInit(void)
 {
 	TA0CTL = TASSEL__ACLK | MC__CONTINUOUS | TACLR;
-	TA0CCR0 = TA0R + (32768 / 5);
+	TA0CCR0 = TA0R + (32768 / SAMPLE_TICK);
 	TA0CCTL0 = CCIE;
+	TA0CCTL0 &= ~CCIFG;
 }
 
 static void gpioInit(void)
@@ -119,18 +122,36 @@ static void blePrintString(const char* str) { while (*str) blePrintChar(*str++);
 static void bleInitSequence(void)
 {
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	ack = 0;
+	switch (ack)
+	{
+		case 0:
+			blePrintString("CMD+RESET=0\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 1:
+			blePrintString("CMD+NAME=SmartMoisture\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 2:
+			blePrintString("CMD+RESET=0\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 3:
+			blePrintString("CMD+ADV=1\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+			break;
+		case 4:
+			blePrintString("CMD+NOTIFY=1\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+			break;
+		default:
+			break;
+	}
+}
 
-	blePrintString("CMD+RESET=0\r\n");
-	delayMs(BLE_COMMAND_DELAY);
-	blePrintString("CMD+NAME=SmartMoisture\r\n");
-	delayMs(BLE_COMMAND_DELAY);
-	blePrintString("CMD+RESET=0\r\n");
-	delayMs(BLE_COMMAND_DELAY);
-	blePrintString("CMD+ADV=1\r\n");
-	delayMs(BLE_COMMAND_DELAY);
-	blePrintString("CMD+NOTIFY=1\r\n");
-	delayMs(BLE_COMMAND_DELAY);
+static uint8_t checksum(const char* s)
+{
+	uint8_t x = 0;
+
+	while (*s) x ^= *s++;
+	return x;
 }
 
 static void bleSendMeasurement(const float tempC, const int adcRaw)
@@ -139,10 +160,14 @@ static void bleSendMeasurement(const float tempC, const int adcRaw)
 	int tempFrac = tempX100 % 100;
 	if (tempFrac < 0) tempFrac = -tempFrac;
 
-	char buf[48];
-	const int n = snprintf(buf, sizeof(buf), "CMD+DATA=0,Temp:%d.%02d;Moisture:%d\r\n", tempX100 / 100, tempFrac,
-	                       adcRaw);
-	if (n > 0) blePrintString(buf);
+	char payload[48];
+	int n = snprintf(payload, sizeof(payload), "{\"t\":%d.%02d,\"m\":%d}", tempX100 / 100, tempFrac, adcRaw);
+	if (n <= 0) return;
+
+	uint8_t cs = checksum(payload);
+	char frame[80];
+	int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
+	if (m > 0) blePrintString(frame);
 }
 
 int main(void)
@@ -154,11 +179,13 @@ int main(void)
 	timerInit();
 	gpioInit();
 
+#ifdef OLED
 	oledInit();
 	oledClear();
 	oledDrawString(0, 3, "  SmartMoisture v2.0");
 	oledDrawString(0, 4, "  Indriya Sensotech");
-	delayMs(1000);
+	delayMs(600);
+#endif
 
 	maxInit();
 	adcInit();
@@ -170,8 +197,10 @@ int main(void)
 	BLE_RESET_PORT |= BLE_RESET_PIN;
 	delayMs(BLE_COMMAND_DELAY);
 
+#ifdef OLED
 	oledClear();
 	oledDrawString(0, 0, "BLE: Ready");
+#endif
 
 	while (1)
 	{
@@ -180,8 +209,6 @@ int main(void)
 
 		if (bleGetLine(line, sizeof(line)))
 		{
-			oledDrawString(0, 2, line);
-
 			if (strncmp(line, "EVT+READY", 9) == 0)
 			{
 				bleConnected = 0;
@@ -197,7 +224,9 @@ int main(void)
 			else if (strncmp(line, "EVT+CON", 7) == 0)
 			{
 				bleConnected = 1;
+				#ifdef OLED
 				oledDrawString(0, 0, "BLE: Connected");
+				#endif
 			}
 			else if (strncmp(line, "EVT+DISCON", 10) == 0)
 			{
@@ -205,7 +234,9 @@ int main(void)
 				ack = 0;
 				bleInitPending = 1;
 				resetCount = 25;
+				#ifdef OLED
 				oledDrawString(0, 0, "BLE: Disconnected");
+				#endif
 			}
 		}
 
@@ -241,7 +272,9 @@ int main(void)
 			char faultMsg[16];
 			snprintf(faultMsg, sizeof(faultMsg), "MAX: Error (%02X)", fault);
 
+			#ifdef OLED
 			oledDrawString(0, 1, faultMsg);
+			#endif
 			LED_PORT ^= LED_PIN;
 			delayMs(FAULT_BLINK_DELAY);
 
@@ -251,17 +284,20 @@ int main(void)
 			continue;
 		}
 
-		char line1[20], line2[20];
 		if (bleConnected && sampleCountdown == 0)
 		{
 			bleSendMeasurement(tDegC, adcRaw);
-			sampleCountdown = 5;
+			sampleCountdown = SAMPLE_TICK;
 		}
 
+		#ifdef OLED
+		char line1[20], line2[20];
 		snprintf(line1, sizeof(line1), "Temp: %d.%02d C", tempX100 / 100, tempFrac);
 		snprintf(line2, sizeof(line2), "ADC:  %u", adcRaw);
+
 		oledDrawString(0, 3, line1);
 		oledDrawString(0, 4, line2);
+		#endif
 	}
 }
 
@@ -281,7 +317,6 @@ void USCI_A0_ISR(void)
 		case USCI_UART_UCRXIFG:
 		{
 			const uint8_t c = (uint8_t)UCA0RXBUF;
-			LED_PORT ^= LED_PIN; // TODO: Remove
 
 			if (c == 0)
 			{
@@ -291,9 +326,8 @@ void USCI_A0_ISR(void)
 
 			if (bleLineReady)
 			{
-				bleLineReady = 0;
-				bleLineLen = 0;
-				bleOverflow = 0;
+				__bic_SR_register_on_exit(LPM0_bits);
+				return;
 			}
 
 			if (c == '\r' || c == '\n')
@@ -338,8 +372,7 @@ __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #endif
 void TIMER0_A0_ISR(void)
 {
-	TA0CCR0 += (32768 / 5);
+	TA0CCR0 += (32768 / SAMPLE_TICK);
 	tick = 1;
-
 	__bic_SR_register_on_exit(LPM0_bits);
 }

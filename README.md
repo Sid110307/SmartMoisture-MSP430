@@ -29,7 +29,7 @@ devices.
 - SCLK - P2.4
 - MISO - P2.5
 - MOSI - P2.6
-- DRDY - P3.2
+- DRDY - P3.2 (unused)
 - BLE_PWR - P2.7
 - VCC - 3.3V
 - GND - GND
