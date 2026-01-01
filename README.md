@@ -8,7 +8,7 @@ devices.
 
 ## Components
 
-- **MCU**: Texas Instruments MSP430FR2433
+- **MCU**: TI MSP430FR2433
 - **Moisture Sensor**: Capacitive soil moisture sensor (HW-101)
 - **Temperature Sensor**: MAX31865 RTD-to-Digital Converter with PT100/PT1000
 - **Display**: SSD1306 OLED Display (128x64)
@@ -17,13 +17,13 @@ devices.
 
 ## Wiring
 
-### Moisture Sensor:
+### Moisture Sensor
 
 - A0 - P1.6
 - GND - GND
 - VCC - 3.3V
 
-### Temperature Sensor (MAX31865):
+### Temperature Sensor (MAX31865)
 
 - CS - P2.3
 - SCLK - P2.4
@@ -34,14 +34,14 @@ devices.
 - VCC - 3.3V
 - GND - GND
 
-### OLED Display (SSD1306):
+### OLED Display (SSD1306)
 
 - SCL - P1.2
 - SDA - P1.3
 - VCC - 3.3V
 - GND - GND
 
-### BLE Module (nRF52810, UART @ 115200 bps):
+### BLE Module (nRF52810-based, UART @ 115200 bps)
 
 - BLE_WAKE - P2.2
 - BLE_IRQ - P3.1
@@ -51,7 +51,33 @@ devices.
 - VCC - 3.3V (via BLE_PWR, controlled by P2.7)
 - GND - GND
 
-### Status LED:
+### Status LED
 
 - LED - P1.7
 - GND - GND
+
+## Data
+
+BLE data (from nRF52810) comes in the form:
+
+```json
+{"s":0,"t":00.00,"m":000}*HH\r\n
+```
+
+where `"s":0` is the sequence number, `"t":00.00` is the temperature read in Celsius, `"m":000` is the raw ADC value of the soil moisture sensor, and `HH` is the data's XORed checksum.
+
+Default sampling rate is every 1 second.
+The BLE device's pairing pin is `123456`.
+
+### Commands
+
+|Command|Description|Example|Response|
+|-------|-----------|----------|--------|
+|START|Start periodic sampling|`START*HH\r\n`|`OK START\r\n`|
+|STOP|Stop periodic sampling|`STOP*HH\r\n`|`OK STOP\r\n`|
+|RATE n|Set sampling rate to n seconds|`RATE 30*HH\r\n`|`OK RATE\r\n`|
+|SEQ n|Set sequence number to n|`SEQ 42*HH\r\n`|`OK SEQ\r\n`|
+|GET|Get current sample and config|`GET*HH\r\n`|`OK s:0,t:1,m:1023,r:30\r\n`|
+|RESET|Reset the BLE module|`RESET*HH\r\n`|No response|
+
+Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string.

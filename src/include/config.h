@@ -3,6 +3,11 @@
 #include <msp430.h>
 #include <stdint.h>
 
+#define ENABLE_OLED // Comment to disable I2C OLED display
+#define ENABLE_BLE // Comment to disable BLE device
+#define ENABLE_ADC // Comment to disable ADC moisture reading
+#define ENABLE_MAX // Comment to disable MAX31865 temperature reading
+
 #define MAX_CS_PORT P2OUT
 #define MAX_CS_DIR P2DIR
 #define MAX_CS_PIN BIT3
