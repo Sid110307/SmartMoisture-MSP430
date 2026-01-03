@@ -13,7 +13,8 @@
 
 #if defined(ENABLE_BLE)
 static volatile char bleLine[BLE_BUFFER_SIZE];
-static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0, samplingEnabled = 1, resetCount = BLE_RETRY_TICKS;
+static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0,
+                        samplingEnabled = 1, resetCount = BLE_RETRY_TICKS;
 static volatile uint16_t sampleEveryTicks = SAMPLE_TICK;
 
 static uint8_t bleConnected = 0;
@@ -22,7 +23,8 @@ static uint16_t sampleCountdown = 0, seq = 0;
 static volatile uint8_t tick = 0;
 #endif
 
-typedef struct {
+typedef struct
+{
 	int tempX100;
 	uint16_t adcRaw;
 	uint8_t maxFault;
@@ -130,7 +132,8 @@ static uint8_t bleGetLine(char* out, uint8_t outSize)
 
 static void blePrintChar(const char c)
 {
-	while (!(UCA0IFG & UCTXIFG));
+	uint16_t counter = 60000;
+	while (!(UCA0IFG & UCTXIFG)) if (--counter == 0) break;
 	UCA0TXBUF = (uint8_t)c;
 }
 
@@ -141,25 +144,25 @@ static void bleInitSequence(void)
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 	switch (ack)
 	{
-	case 0:
-		blePrintString("CMD+RESET=0\r\n");
-		delayMs(BLE_COMMAND_DELAY);
-	case 1:
-		blePrintString("CMD+NAME=SmartMoisture\r\n");
-		delayMs(BLE_COMMAND_DELAY);
-	case 2:
-		blePrintString("CMD+RESET=0\r\n");
-		delayMs(BLE_COMMAND_DELAY);
-	case 3:
-		blePrintString("CMD+ADV=1\r\n");
-		delayMs(BLE_COMMAND_DELAY);
-		break;
-	case 4:
-		blePrintString("CMD+NOTIFY=1\r\n");
-		delayMs(BLE_COMMAND_DELAY);
-		break;
-	default:
-		break;
+		case 0:
+			blePrintString("CMD+RESET=0\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 1:
+			blePrintString("CMD+NAME=SmartMoisture\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 2:
+			blePrintString("CMD+RESET=0\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+		case 3:
+			blePrintString("CMD+ADV=1\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+			break;
+		case 4:
+			blePrintString("CMD+NOTIFY=1\r\n");
+			delayMs(BLE_COMMAND_DELAY);
+			break;
+		default:
+			break;
 	}
 }
 
@@ -230,15 +233,15 @@ static uint8_t verifyChecksum(char* cmd)
 
 static void bleSendMeasurement(int tempX100, uint16_t adcRaw)
 {
-	char tbuf[12];
-	tempStrFromX100(tempX100, tbuf, sizeof(tbuf));
+	static char tBuf[12];
+	tempStrFromX100(tempX100, tBuf, sizeof(tBuf));
 
-	char payload[48];
-	int n = snprintf(payload, sizeof(payload), "{\"s\":%u,\"t\":%s,\"m\":%u}", seq++, tbuf, adcRaw);
+	static char payload[48];
+	int n = snprintf(payload, sizeof(payload), "{\"s\":%u,\"t\":%s,\"m\":%u}", seq++, tBuf, adcRaw);
 	if (n <= 0) return;
 
 	uint8_t cs = checksum(payload);
-	char frame[80];
+	static char frame[80];
 	int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
 	if (m > 0) blePrintString(frame);
 }
@@ -289,7 +292,8 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 		tempStrFromX100(s->tempX100, tbuf, sizeof(tbuf));
 
 		char response[64];
-		int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tbuf, s->adcRaw, sampleEveryTicks / SAMPLE_TICK);
+		int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tbuf, s->adcRaw,
+		                 sampleEveryTicks / SAMPLE_TICK);
 		if (n > 0) blePrintString(response);
 	}
 	else if (strncmp(cmd, "RESET", 5) == 0)
@@ -464,54 +468,53 @@ void USCI_A0_ISR(void)
 {
 	switch (__even_in_range(UCA0IV, USCI_UART_UCTXCPTIFG))
 	{
-	case USCI_NONE:
-		break;
-	case USCI_UART_UCRXIFG:
-	{
-		const uint8_t c = (uint8_t)UCA0RXBUF;
-
-		if (c == 0)
+		case USCI_NONE:
+			break;
+		case USCI_UART_UCRXIFG:
 		{
-			__bic_SR_register_on_exit(LPM0_bits);
-			return;
-		}
+			const uint8_t c = (uint8_t)UCA0RXBUF;
 
-		if (bleLineReady)
-		{
-			__bic_SR_register_on_exit(LPM0_bits);
-			return;
-		}
-
-		if (c == '\r' || c == '\n')
-		{
-			if (bleLineLen > 0)
+			if (c == 0)
 			{
-				if (bleLineLen >= BLE_BUFFER_SIZE) bleLineLen = BLE_BUFFER_SIZE - 1;
-
-				bleLine[bleLineLen] = '\0';
-				bleLineReady = 1;
+				__bic_SR_register_on_exit(LPM0_bits);
+				return;
 			}
-			else bleLineLen = 0;
 
-			bleOverflow = 0;
+			if (bleLineReady)
+			{
+				__bic_SR_register_on_exit(LPM0_bits);
+				return;
+			}
+
+			if (c == '\r' || c == '\n')
+			{
+				if (bleLineLen > 0)
+				{
+					if (bleLineLen >= BLE_BUFFER_SIZE) bleLineLen = BLE_BUFFER_SIZE - 1;
+
+					bleLine[bleLineLen] = '\0';
+					bleLineReady = 1;
+				}
+				else bleLineLen = 0;
+
+				bleOverflow = 0;
+				__bic_SR_register_on_exit(LPM0_bits);
+				return;
+			}
+
+			if (!bleOverflow)
+			{
+				if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
+				else bleOverflow = 1;
+			}
+
 			__bic_SR_register_on_exit(LPM0_bits);
-			return;
+			break;
 		}
-
-		if (!bleOverflow)
-		{
-			if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
-			else bleOverflow = 1;
-		}
-
-		__bic_SR_register_on_exit(LPM0_bits);
-		break;
-	}
-	case USCI_UART_UCTXIFG:
-	case USCI_UART_UCSTTIFG:
-	case USCI_UART_UCTXCPTIFG:
-	default:
-		break;
+		case USCI_UART_UCTXIFG:
+		case USCI_UART_UCSTTIFG:
+		case USCI_UART_UCTXCPTIFG: default:
+			break;
 	}
 }
 #endif
