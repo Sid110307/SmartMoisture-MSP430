@@ -7,7 +7,6 @@ set(MCU "${MSP430_MCU}")
 file(GLOB SRC_FILES "src/*.c")
 add_executable(firmware.elf ${SRC_FILES})
 
-target_compile_options(firmware.elf PRIVATE -g)
 target_include_directories(firmware.elf PRIVATE "${MSP430_GCC_INCLUDE_DIR}")
 target_link_options(firmware.elf PRIVATE -Wl,-Map=${CMAKE_BINARY_DIR}/firmware.map)
 
