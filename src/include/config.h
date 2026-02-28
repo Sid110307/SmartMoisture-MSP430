@@ -1,7 +1,7 @@
 #pragma once
 
 #include <msp430.h>
-#include <stdint.h>
+#include "./types.h"
 
 #define ENABLE_OLED // Comment to disable I2C OLED display
 #define ENABLE_BLE // Comment to disable BLE device
@@ -25,6 +25,7 @@
 #define MAX_CFG_50HZ 0x01
 
 #define OLED_ADDR 0x3C
+#define OLED_WAIT 20000
 
 #define LED_PORT P1OUT
 #define LED_DIR P1DIR
@@ -45,8 +46,7 @@
 #define BLE_TXSEL_BIT BIT4
 #define BLE_RXSEL_BIT BIT5
 
-#define BLE_COMMAND_DELAY 500
-#define BLE_SAMPLE_DELAY 500
+#define COMMAND_DELAY 500
 #define FAULT_BLINK_DELAY 250
 
 static void delayA0(const uint16_t ticks)
@@ -60,7 +60,7 @@ static void delayMs(const uint16_t ms)
 	uint32_t ticks = ((uint32_t)ms * 32768UL + 500UL) / 1000UL;
 	while (ticks)
 	{
-		const uint16_t chunk = (ticks > 60000UL) ? 60000U : (uint16_t)ticks;
+		const uint16_t chunk = ticks > 60000UL ? 60000U : (uint16_t)ticks;
 
 		delayA0(chunk);
 		ticks -= chunk;

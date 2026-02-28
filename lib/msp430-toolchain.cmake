@@ -13,8 +13,7 @@ set(MSP430_GCC_LIB_DIR "${MSP430_GCC_ROOT}/msp430-elf/lib")
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(MSP430_COMMON_CFLAGS "-mmcu=${MSP430_MCU} -g -Os -ffunction-sections -fdata-sections -flto -Wall -Wextra \
-                        -Wpedantic")
+set(MSP430_COMMON_CFLAGS "-mmcu=${MSP430_MCU} -Os -ffunction-sections -fdata-sections -flto -Wall -Wextra -Wpedantic")
 set(CMAKE_C_FLAGS_INIT "${MSP430_COMMON_CFLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${MSP430_COMMON_CFLAGS} -fno-exceptions -fno-rtti")
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-Wl,--gc-sections -flto -L\"${MSP430_GCC_LIB_DIR}\" -L\"${MSP430_GCC_INCLUDE_DIR}\"")

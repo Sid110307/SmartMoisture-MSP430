@@ -9,7 +9,8 @@ static void spiInit(void)
 	MAX_CS_PORT |= MAX_CS_PIN;
 
 	UCA1CTLW0 = UCSWRST;
-	UCA1CTLW0 |= UCSYNC | UCMST | UCMSB | UCSSEL__SMCLK;
+	UCA1CTLW0 |= UCSYNC | UCMST | UCMSB | UCCKPH | UCSSEL__SMCLK;
+	UCA1CTLW0 &= ~UCCKPL;
 	UCA1BRW = 4;
 	UCA1CTLW0 &= ~UCSWRST;
 }
@@ -58,7 +59,7 @@ static void maxClearFault(void)
 void maxInit(void)
 {
 	spiInit();
-	delayMs(BLE_COMMAND_DELAY);
+	delayMs(COMMAND_DELAY);
 
 	uint8_t cfg = 0;
 	cfg |= MAX_CFG_3WIRE;
@@ -93,9 +94,7 @@ int maxReadRtdTemp(void)
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
 
-	const uint32_t Rref = 430000;
-	long Rt = (long)(((uint64_t)raw * Rref) / 32768ULL);
-	return (int)((Rt - 100000) * 26 / 10);
+	return (int)((int64_t)raw * 43000000 / 32768 - 10000);
 }
 
 uint8_t maxReadReg(const uint8_t regAddr)

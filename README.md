@@ -60,24 +60,27 @@ devices.
 
 BLE data (from nRF52810) comes in the form:
 
-```json
-{"s":0,"t":00.00,"m":000}*HH\r\n
+```
+SsssTttttMmmmm*HH\r\n
 ```
 
-where `"s":0` is the sequence number, `"t":00.00` is the temperature read in Celsius, `"m":000` is the raw ADC value of the soil moisture sensor, and `HH` is the data's XORed checksum.
+where `Ssss` is the sequence number, `Ttttt` is the temperature read in Celsius * 100, `Mmmmm` is the raw ADC value of
+the soil moisture sensor, and `HH` is the data's XORed checksum.
+
+Example: `S0001T0234M1023*5A\r\n` indicates sequence 1, temperature 23.4°C, and soil moisture reading of 1023.
 
 Default sampling rate is every 1 second.
 The BLE device's pairing pin is `123456`.
 
 ### Commands
 
-|Command|Description|Example|Response|
-|-------|-----------|----------|--------|
-|START|Start periodic sampling|`START*HH\r\n`|`OK START\r\n`|
-|STOP|Stop periodic sampling|`STOP*HH\r\n`|`OK STOP\r\n`|
-|RATE n|Set sampling rate to n seconds|`RATE 30*HH\r\n`|`OK RATE\r\n`|
-|SEQ n|Set sequence number to n|`SEQ 42*HH\r\n`|`OK SEQ\r\n`|
-|GET|Get most recent sample and config|`GET*HH\r\n`|`OK s:0,t:1,m:1023,r:30\r\n`|
-|RESET|Reset the BLE module|`RESET*HH\r\n`|No response|
+| Command | Description                       | Example          | Response                     |
+|---------|-----------------------------------|------------------|------------------------------|
+| START   | Start periodic sampling           | `START*HH\r\n`   | `OK START\r\n`               |
+| STOP    | Stop periodic sampling            | `STOP*HH\r\n`    | `OK STOP\r\n`                |
+| RATE n  | Set sampling rate to n seconds    | `RATE 30*HH\r\n` | `OK RATE\r\n`                |
+| SEQ n   | Set sequence number to n          | `SEQ 42*HH\r\n`  | `OK SEQ\r\n`                 |
+| GET     | Get most recent sample and config | `GET*HH\r\n`     | `OK s:0,t:1,m:1023,r:30\r\n` |
+| RESET   | Reset the BLE module              | `RESET*HH\r\n`   | No response                  |
 
 Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string.

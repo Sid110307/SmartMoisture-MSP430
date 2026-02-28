@@ -8,20 +8,27 @@
 #include "./include/oled.h"
 
 #define BLE_BUFFER_SIZE 64
-#define SAMPLE_TICK 5
-#define BLE_RETRY_TICKS (SAMPLE_TICK * 5)
+#define BLE_LINE_SLOTS  2
+#define SAMPLE_TICK_PERIOD 5
+#define UI_UPDATE_TICKS 2
+#define BLE_RETRY_TICKS (SAMPLE_TICK_PERIOD * 5)
 
 #if defined(ENABLE_BLE)
-static volatile char bleLine[BLE_BUFFER_SIZE];
-static volatile uint8_t bleInitPending = 1, bleLineLen = 0, bleLineReady = 0, bleOverflow = 0, tick = 0, ack = 0,
+static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE];
+static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_SLOTS] = {0, 0},
+                        bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bleInitPending = 1, ack = 0,
                         samplingEnabled = 1, resetCount = BLE_RETRY_TICKS;
-static volatile uint16_t sampleEveryTicks = SAMPLE_TICK;
+static volatile uint16_t sampleEveryTicks = SAMPLE_TICK_PERIOD;
 
 static uint8_t bleConnected = 0;
 static uint16_t sampleCountdown = 0, seq = 0;
-#else
-static volatile uint8_t tick = 0;
 #endif
+
+#if defined(ENABLE_OLED)
+static uint8_t uiTicks = 0;
+#endif
+
+static volatile uint8_t tick = 0;
 
 typedef struct
 {
@@ -69,7 +76,7 @@ static void clockInit(void)
 static void timerInit(void)
 {
 	TA0CTL = TASSEL__ACLK | MC__CONTINUOUS | TACLR;
-	TA0CCR0 = TA0R + (32768 / SAMPLE_TICK);
+	TA0CCR0 = TA0R + (32768 / SAMPLE_TICK_PERIOD);
 	TA0CCTL0 = CCIE;
 	TA0CCTL0 &= ~CCIFG;
 }
@@ -86,7 +93,7 @@ static void gpioInit(void)
 	BLE_PWR_DIR |= BLE_PWR_PIN;
 	BLE_PWR_PORT |= BLE_PWR_PIN;
 	BLE_WAKE_DIR |= BLE_WAKE_PIN;
-	BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
+	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 	BLE_RESET_DIR |= BLE_RESET_PIN;
 	BLE_RESET_PORT |= BLE_RESET_PIN;
 #endif
@@ -113,27 +120,27 @@ static void bleUartInit(void)
 
 static uint8_t bleGetLine(char* out, uint8_t outSize)
 {
-	if (!bleLineReady) return 0;
+	if (!bleReady[bleR]) return 0;
 	__disable_interrupt();
 
-	uint8_t n = bleLineLen;
+	uint8_t n = bleLengths[bleR];
 	if (n >= outSize) n = outSize - 1;
 
-	for (uint8_t i = 0; i < n; ++i) out[i] = bleLine[i];
+	for (uint8_t i = 0; i < n; ++i) out[i] = bleLines[bleR][i];
 	out[n] = '\0';
 
-	bleLineLen = 0;
-	bleLineReady = 0;
-	bleOverflow = 0;
+	bleLengths[bleR] = 0;
+	bleReady[bleR] = 0;
+	bleOverflow[bleR] = 0;
 
+	bleR = (bleR + 1) % BLE_LINE_SLOTS;
 	__enable_interrupt();
 	return 1;
 }
 
 static void blePrintChar(const char c)
 {
-	uint16_t counter = 60000;
-	while (!(UCA0IFG & UCTXIFG)) if (--counter == 0) break;
+	while (!(UCA0IFG & UCTXIFG));
 	UCA0TXBUF = (uint8_t)c;
 }
 
@@ -146,29 +153,28 @@ static void bleInitSequence(void)
 	{
 		case 0:
 			blePrintString("CMD+RESET=0\r\n");
-			delayMs(BLE_COMMAND_DELAY);
+			break;
 		case 1:
 			blePrintString("CMD+NAME=SmartMoisture\r\n");
-			delayMs(BLE_COMMAND_DELAY);
+			break;
 		case 2:
 			blePrintString("CMD+RESET=0\r\n");
-			delayMs(BLE_COMMAND_DELAY);
+			break;
 		case 3:
 			blePrintString("CMD+ADV=1\r\n");
-			delayMs(BLE_COMMAND_DELAY);
 			break;
 		case 4:
 			blePrintString("CMD+NOTIFY=1\r\n");
-			delayMs(BLE_COMMAND_DELAY);
 			break;
 		default:
 			break;
 	}
+	delayMs(COMMAND_DELAY);
 }
 
-static void tempStrFromX100(int tempX100, char* out, unsigned outSize)
+static void tempStrFromX100(const int tempX100, char* out, const unsigned outSize)
 {
-	int w = tempX100 / 100;
+	const int w = tempX100 / 100;
 	int f = tempX100 % 100;
 
 	if (f < 0) f = -f;
@@ -195,11 +201,11 @@ static uint8_t checksum(const char* s)
 {
 	uint8_t x = 0;
 
-	while (*s) x ^= (uint8_t)(*s++);
+	while (*s) x ^= (uint8_t)*s++;
 	return x;
 }
 
-static int hexNibble(char c)
+static int hexNibble(const char c)
 {
 	if (c >= '0' && c <= '9') return c - '0';
 	if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
@@ -220,7 +226,7 @@ static uint8_t verifyChecksum(char* cmd)
 	if (hi < 0 || lo < 0) return 0;
 	const uint8_t got = (uint8_t)((hi << 4) | lo);
 
-	char saved = *star;
+	const char saved = *star;
 	*star = '\0';
 	const uint8_t calc = checksum(cmd);
 	*star = saved;
@@ -231,18 +237,18 @@ static uint8_t verifyChecksum(char* cmd)
 	return 1;
 }
 
-static void bleSendMeasurement(int tempX100, uint16_t adcRaw)
+static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
 {
-	static char tBuf[12];
-	tempStrFromX100(tempX100, tBuf, sizeof(tBuf));
+	const uint16_t s = seq % 1000;
+	seq++;
 
-	static char payload[48];
-	int n = snprintf(payload, sizeof(payload), "{\"s\":%u,\"t\":%s,\"m\":%u}", seq++, tBuf, adcRaw);
+	static char payload[24];
+	const int n = snprintf(payload, sizeof(payload), "S%03uT%+05dM%04u", s, tempX100, adcRaw);
 	if (n <= 0) return;
 
-	uint8_t cs = checksum(payload);
-	static char frame[80];
-	int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
+	const uint8_t cs = checksum(payload);
+	static char frame[48];
+	const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
 	if (m > 0) blePrintString(frame);
 }
 
@@ -274,7 +280,7 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 
 		if (rate > 0)
 		{
-			sampleEveryTicks = (uint16_t)(rate * SAMPLE_TICK);
+			sampleEveryTicks = (uint16_t)(rate * SAMPLE_TICK_PERIOD);
 			if (sampleCountdown > sampleEveryTicks) sampleCountdown = sampleEveryTicks;
 		}
 		blePrintString("CMD+DATA=0,OK RATE\r\n");
@@ -288,12 +294,13 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 	}
 	else if (strncmp(cmd, "GET", 3) == 0)
 	{
-		char tbuf[12];
-		tempStrFromX100(s->tempX100, tbuf, sizeof(tbuf));
+		char tBuf[12];
+		tempStrFromX100(s->tempX100, tBuf, sizeof(tBuf));
 
 		char response[64];
-		int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tbuf, s->adcRaw,
-		                 sampleEveryTicks / SAMPLE_TICK);
+		const int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tBuf,
+		                       s->adcRaw,
+		                       sampleEveryTicks / SAMPLE_TICK_PERIOD);
 		if (n > 0) blePrintString(response);
 	}
 	else if (strncmp(cmd, "RESET", 5) == 0)
@@ -339,9 +346,9 @@ int main(void)
 
 #if defined(ENABLE_BLE)
 	BLE_RESET_PORT &= ~BLE_RESET_PIN;
-	delayMs(BLE_COMMAND_DELAY);
+	delayMs(COMMAND_DELAY);
 	BLE_RESET_PORT |= BLE_RESET_PIN;
-	delayMs(BLE_COMMAND_DELAY);
+	delayMs(COMMAND_DELAY);
 #endif
 
 #if defined(ENABLE_OLED)
@@ -359,7 +366,7 @@ int main(void)
 #if defined(ENABLE_BLE)
 		char line[BLE_BUFFER_SIZE];
 
-		if (bleGetLine(line, sizeof(line)))
+		while (bleGetLine(line, sizeof(line)))
 		{
 			if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11, &s);
 			else if (strncmp(line, "EVT+READY", 9) == 0)
@@ -402,8 +409,6 @@ int main(void)
 
 		if (!bleConnected)
 		{
-			samplingEnabled = 0;
-
 			if (resetCount == 0)
 			{
 				resetCount = BLE_RETRY_TICKS;
@@ -430,7 +435,7 @@ int main(void)
 			delayMs(FAULT_BLINK_DELAY);
 
 			maxInit();
-			delayMs(BLE_SAMPLE_DELAY);
+			delayMs(COMMAND_DELAY);
 			continue;
 		}
 
@@ -443,15 +448,20 @@ int main(void)
 #endif
 
 #if defined(ENABLE_OLED)
-		char line1[20], line2[20];
-		char tbuf[12];
-		tempStrFromX100(s.tempX100, tbuf, sizeof(tbuf));
+		if (uiTicks < 255) uiTicks++;
+		if (uiTicks >= UI_UPDATE_TICKS)
+		{
+			uiTicks = 0;
 
-		snprintf(line1, sizeof(line1), "Temp: %s C", tbuf);
-		snprintf(line2, sizeof(line2), "ADC:  %u", s.adcRaw);
+			char line1[20], line2[20], tBuf[12];
+			tempStrFromX100(s.tempX100, tBuf, sizeof(tBuf));
 
-		oledDrawString(0, 3, line1);
-		oledDrawString(0, 4, line2);
+			snprintf(line1, sizeof(line1), "Temp: %5s C", tBuf);
+			snprintf(line2, sizeof(line2), "ADC:  %4u", s.adcRaw);
+
+			oledDrawString(0, 3, line1);
+			oledDrawString(0, 4, line2);
+		}
 #endif
 	}
 }
@@ -471,46 +481,62 @@ void USCI_A0_ISR(void)
 		case USCI_NONE:
 			break;
 		case USCI_UART_UCRXIFG:
-		{
-			const uint8_t c = (uint8_t)UCA0RXBUF;
-
-			if (c == 0)
 			{
-				__bic_SR_register_on_exit(LPM0_bits);
-				return;
-			}
+				const uint8_t c = (uint8_t)UCA0RXBUF;
 
-			if (bleLineReady)
-			{
-				__bic_SR_register_on_exit(LPM0_bits);
-				return;
-			}
-
-			if (c == '\r' || c == '\n')
-			{
-				if (bleLineLen > 0)
+				if (c == 0)
 				{
-					if (bleLineLen >= BLE_BUFFER_SIZE) bleLineLen = BLE_BUFFER_SIZE - 1;
-
-					bleLine[bleLineLen] = '\0';
-					bleLineReady = 1;
+					__bic_SR_register_on_exit(LPM0_bits);
+					return;
 				}
-				else bleLineLen = 0;
 
-				bleOverflow = 0;
+				if (bleReady[bleW])
+				{
+					uint8_t next = (bleW + 1) % BLE_LINE_SLOTS;
+					if (!bleReady[next])
+					{
+						bleW = next;
+						bleLengths[bleW] = 0;
+						bleOverflow[bleW] = 0;
+					}
+					else
+					{
+						__bic_SR_register_on_exit(LPM0_bits);
+						return;
+					}
+				}
+
+				if (c == '\r' || c == '\n')
+				{
+					if (bleLengths[bleW] > 0)
+					{
+						if (bleLengths[bleW] >= BLE_BUFFER_SIZE) bleLengths[bleW] = BLE_BUFFER_SIZE - 1;
+						bleLines[bleW][bleLengths[bleW]] = '\0';
+						bleReady[bleW] = 1;
+
+						uint8_t next = (bleW + 1) % BLE_LINE_SLOTS;
+						if (!bleReady[next])
+						{
+							bleW = next;
+							bleLengths[bleW] = 0;
+							bleOverflow[bleW] = 0;
+						}
+					}
+					else bleLengths[bleW] = 0;
+
+					__bic_SR_register_on_exit(LPM0_bits);
+					return;
+				}
+
+				if (!bleOverflow[bleW])
+				{
+					if (bleLengths[bleW] < BLE_BUFFER_SIZE - 1) bleLines[bleW][bleLengths[bleW]++] = (char)c;
+					else bleOverflow[bleW] = 1;
+				}
+
 				__bic_SR_register_on_exit(LPM0_bits);
-				return;
+				break;
 			}
-
-			if (!bleOverflow)
-			{
-				if (bleLineLen < BLE_BUFFER_SIZE - 1) bleLine[bleLineLen++] = (char)c;
-				else bleOverflow = 1;
-			}
-
-			__bic_SR_register_on_exit(LPM0_bits);
-			break;
-		}
 		case USCI_UART_UCTXIFG:
 		case USCI_UART_UCSTTIFG:
 		case USCI_UART_UCTXCPTIFG: default:
@@ -528,7 +554,7 @@ __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #endif
 void TIMER0_A0_ISR(void)
 {
-	TA0CCR0 += (32768 / SAMPLE_TICK);
+	TA0CCR0 += (32768 / SAMPLE_TICK_PERIOD);
 	if (tick < 255) tick++;
 	__bic_SR_register_on_exit(LPM0_bits);
 }
