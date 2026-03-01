@@ -311,7 +311,7 @@ void USCI_A0_ISR(void)
 
 				if (c == 0)
 				{
-					__bic_SR_register_on_exit(LPM4_bits);
+					LPM4_EXIT;
 					return;
 				}
 
@@ -326,7 +326,7 @@ void USCI_A0_ISR(void)
 					}
 					else
 					{
-						__bic_SR_register_on_exit(LPM4_bits);
+						LPM4_EXIT;
 						return;
 					}
 				}
@@ -349,7 +349,7 @@ void USCI_A0_ISR(void)
 					}
 					else bleLengths[bleW] = 0;
 
-					__bic_SR_register_on_exit(LPM4_bits);
+					LPM4_EXIT;
 					return;
 				}
 
@@ -359,7 +359,7 @@ void USCI_A0_ISR(void)
 					else bleOverflow[bleW] = 1;
 				}
 
-				__bic_SR_register_on_exit(LPM4_bits);
+				LPM4_EXIT;
 				break;
 			}
 		case USCI_UART_UCTXIFG:

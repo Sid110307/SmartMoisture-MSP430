@@ -212,5 +212,5 @@ void TIMER0_A0_ISR(void)
 	TA0CCR0 += 32768 / SAMPLE_TICK_PERIOD;
 	if (tick < 255) tick++;
 
-	__bic_SR_register_on_exit(LPM4_bits);
+	LPM4_EXIT;
 }
