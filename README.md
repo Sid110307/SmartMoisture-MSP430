@@ -74,13 +74,35 @@ The BLE device's pairing pin is `123456`.
 
 ### Commands
 
-| Command | Description                       | Example          | Response                     |
-|---------|-----------------------------------|------------------|------------------------------|
-| START   | Start periodic sampling           | `START*HH\r\n`   | `OK START\r\n`               |
-| STOP    | Stop periodic sampling            | `STOP*HH\r\n`    | `OK STOP\r\n`                |
-| RATE n  | Set sampling rate to n seconds    | `RATE 30*HH\r\n` | `OK RATE\r\n`                |
-| SEQ n   | Set sequence number to n          | `SEQ 42*HH\r\n`  | `OK SEQ\r\n`                 |
-| GET     | Get most recent sample and config | `GET*HH\r\n`     | `OK s:0,t:1,m:1023,r:30\r\n` |
-| RESET   | Reset the BLE module              | `RESET*HH\r\n`   | No response                  |
+| Command | Description                       | Example          | Response                 |
+|---------|-----------------------------------|------------------|--------------------------|
+| START   | Start periodic sampling           | `START*HH\r\n`   | `OK START\r\n`           |
+| STOP    | Stop periodic sampling            | `STOP*HH\r\n`    | `OK STOP\r\n`            |
+| RATE n  | Set sampling rate to n seconds    | `RATE 30*HH\r\n` | `OK RATE\r\n`            |
+| SEQ n   | Set sequence number to n          | `SEQ 42*HH\r\n`  | `OK SEQ\r\n`             |
+| GET     | Get most recent sample and config | `GET*HH\r\n`     | `S123T+2450M1023*5A\r\n` |
+| RESET   | Reset the BLE module              | `RESET*HH\r\n`   | No response              |
 
 Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string.
+
+## Feature Flags
+
+In [`config.h`](src/include/config.h), you can enable/disable features:
+
+- `ENABLE_OLED`: Enable the OLED display for showing sensor data and status.
+- `ENABLE_BLE`: Enable the BLE module for wireless communication.
+- `ENABLE_ADC`: Enable the ADC reading of the soil moisture sensor.
+- `ENABLE_MAX`: Enable the MAX31865 temperature sensor reading.
+
+## MAX31865 Fault Codes
+
+| Mask | Description                                                             |
+|------|-------------------------------------------------------------------------|
+| 0x80 | RTD High Threshold: Measured resistance &geq; programmed high threshold |
+| 0x40 | RTD Low Threshold: Measured resistance &leq; programmed low threshold   |
+| 0x20 | REFIN- &gt; 0.85 &times; V<sub>BIAS</sub>: Reference input high fault   |
+| 0x10 | REFIN- &lt; 0.85 &times; V<sub>BIAS</sub>: Reference input low fault    |
+| 0x08 | RTDIN- &lt; 0.85 &times; V<sub>BIAS</sub>: RTD input low fault          |
+| 0x04 | Overvoltage/Undervoltage fault: Measured voltage exceeds normal range   |
+| 0x02 | Reserved                                                                |
+| 0x01 | Reserved                                                                |

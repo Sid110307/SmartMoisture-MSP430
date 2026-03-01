@@ -1,0 +1,33 @@
+Sl No.,Designator,Description,Qty,MPN,DNP,Footprint,Value
+1,"C1,C3,C4,C5",Capacitor,4,CL21A106KPFNNNE,,Capacitor_SMD:C_0805_2012Metric,10u
+2,C2,Capacitor,1,CL10B105KA8NNNC,,Capacitor_SMD:C_0603_1608Metric,1u
+3,"C6,C7,C8,C10",Capacitor,4,CC0603KRX7R9BB104,,Capacitor_SMD:C_0603_1608Metric,0.1u
+4,D_CHG1,LED SMD 0603 Red,1,APT1608SURCK,,LED_SMD:LED_0603_1608Metric,LED_Red
+5,D_USER1,LED SMD 0603 Blue,1,APT1608QBC/D,,LED_SMD:LED_0603_1608Metric,LED_Blue
+6,F1,Polyfuse Resettable 1206,1,1206L050YR,,Fuse:Fuse_1206_3216Metric,Polyfuse
+7,FB1,Ferrite Bead 0603,1,BLM18AG601SN1D,,Inductor_SMD:L_0603_1608Metric,FerriteBead
+8,"H1,H2,H3,H4",Mounting Hole M2.5,4,-,DNP,MountingHole:MountingHole_2.7mm_M2.5,MountingHole
+9,J1,USB-C Receptacle USB2.0,1,USB4085-GF-A,,Connector_USB:USB_C_Receptacle_GCT_USB4085,USB_C_Receptacle_USB2.0_16P
+10,J2,Pin Header 1x03 2.54mm,1,M20-9990346,,Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical,Conn_01x03
+11,J3,JST-PH 2-pin Horizontal,1,S2B-PH-K-S,,Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal,Conn_01x02
+12,"J4,J7",Pin Header 1x04 2.54mm,2,M20-9990446,,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,Conn_01x04
+13,"J5,J6",Terminal Block 5.08mm 2-pin,2,-,DNP,TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-3-2-5.08_1x02_P5.08mm_Horizontal,Screw_Terminal_01x02
+14,JP1,Solder Jumper 3-pad,1,-,DNP,Jumper:SolderJumper-3_P1.3mm_Open_Pad1.0x1.5mm,SolderJumper_3_Open
+15,"JP3,JP4",Solder Jumper 2-pad,2,-,DNP,Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm,SolderJumper_2_Open
+16,NT1,Net Tie 2-pin,1,-,DNP,,NetTie_2
+17,"R1,R2",Resistor 0603,2,RC0603FR-075K1L,,Resistor_SMD:R_0603_1608Metric,5.1k
+18,R3,Resistor 0603,1,RC0603JR-071K8L,,Resistor_SMD:R_0603_1608Metric,1.8k
+19,"R4,R5",Resistor 0603,2,RC0603JR-071KL,,Resistor_SMD:R_0603_1608Metric,1k
+20,"R6,R7,R9",Resistor 0603,3,RC0603FR-0710KL,,Resistor_SMD:R_0603_1608Metric,10k
+21,R8,Resistor 0603,1,RC0603JR-072KL,,Resistor_SMD:R_0603_1608Metric,2k
+22,R10,Resistor 0603 Precision,1,RT0603BRD07430RL,,Resistor_SMD:R_0603_1608Metric,430/0.1%
+23,R11,Resistor 0603,1,RC0603JR-0747KL,,Resistor_SMD:R_0603_1608Metric,47k
+24,"R12,R13",Resistor 0603,2,RC0603JR-074K7L,,Resistor_SMD:R_0603_1608Metric,4.7k
+25,SW1,Tactile Switch SPST,1,TL3342F160QG,,Button_Switch_SMD:SW_SPST_TL3342,SW_SPST
+26,SW_MAIN1,SPDT Slide Switch,1,PCM12SMTR,,Button_Switch_SMD:SW_SPDT_PCM12,SW_SPDT
+27,U1,MAX31865 RTD Converter,1,MAX31865ATP+,,Package_DFN_QFN:TQFN-20-1EP_5x5mm_P0.65mm_EP3.25x3.25mm,MAX31865xTP
+28,U2,Li-Ion Charger,1,MCP73831T-2ACI/MC,,Package_DFN_QFN:DFN-8-1EP_3x2mm_P0.5mm_EP1.7x1.4mm,MCP73831-2-MC
+29,U3,LDO Regulator 3.3V,1,AP2112K-3.3TRG1,,Package_TO_SOT_SMD:SOT-23-5,AP2112K-3.3
+30,U4,BLE Module,1,BE10-C/AT,,BE10:BE10-C_AT,BE10-C/AT
+31,U5,Microcontroller MSP430FR2433,1,MSP430FR2433IRGER,,Package_DFN_QFN:QFN-24-1EP_4x4mm_P0.5mm_EP2.7x2.7mm,MSP430FR2433IRGER
+32,U6,Load Switch 1A,1,TPS22917DBVR,,Package_TO_SOT_SMD:SOT-23-6,TPS22917DBV

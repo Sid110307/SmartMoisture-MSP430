@@ -82,7 +82,7 @@ int maxReadRtdTemp(void)
 	delayMs(10);
 	t |= MAX_CFG_1SHOT;
 	maxWriteReg(MAX_REG_CONF, t);
-	delayMs(80);
+	delayMs(65);
 
 	uint8_t buf[2];
 	maxReadMulti(MAX_REG_RTD_MSB, buf, 2);
@@ -94,7 +94,8 @@ int maxReadRtdTemp(void)
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
 
-	return (int)((int64_t)raw * 43000000 / 32768 - 10000);
+	const int R = (int)((int64_t)raw * 43000000 / 32768 - 10000);
+	return R > 9999 ? 9999 : R < -9999 ? -9999 : R;
 }
 
 uint8_t maxReadReg(const uint8_t regAddr)

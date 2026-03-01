@@ -2,6 +2,7 @@
 bin/
 lib/dummy
 *.FCBak
+pcb/MoistureSensor-backups/
 
 .vscode/
 .vs/

@@ -1,41 +1,19 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <msp430.h>
 
 #include "./include/config.h"
 #include "./include/max.h"
 #include "./include/oled.h"
+#include "./include/ble.h"
 
-#define BLE_BUFFER_SIZE 64
-#define BLE_LINE_SLOTS  2
 #define SAMPLE_TICK_PERIOD 5
 #define UI_UPDATE_TICKS 2
-#define BLE_RETRY_TICKS (SAMPLE_TICK_PERIOD * 5)
-
-#if defined(ENABLE_BLE)
-static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE];
-static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_SLOTS] = {0, 0},
-                        bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bleInitPending = 1, ack = 0,
-                        samplingEnabled = 1, resetCount = BLE_RETRY_TICKS;
-static volatile uint16_t sampleEveryTicks = SAMPLE_TICK_PERIOD;
-
-static uint8_t bleConnected = 0;
-static uint16_t sampleCountdown = 0, seq = 0;
-#endif
 
 #if defined(ENABLE_OLED)
 static uint8_t uiTicks = 0;
 #endif
 
 static volatile uint8_t tick = 0;
-
-typedef struct
-{
-	int tempX100;
-	uint16_t adcRaw;
-	uint8_t maxFault;
-} SensorSnapshot;
 
 #if defined(ENABLE_ADC)
 static void adcInit(void)
@@ -90,86 +68,8 @@ static void gpioInit(void)
 	P1SEL1 &= ~LED_PIN;
 
 #if defined(ENABLE_BLE)
-	BLE_PWR_DIR |= BLE_PWR_PIN;
-	BLE_PWR_PORT |= BLE_PWR_PIN;
-	BLE_WAKE_DIR |= BLE_WAKE_PIN;
-	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	BLE_RESET_DIR |= BLE_RESET_PIN;
-	BLE_RESET_PORT |= BLE_RESET_PIN;
+	bleGpioInit();
 #endif
-}
-
-#if defined(ENABLE_BLE)
-
-static void bleUartInit(void)
-{
-	P1SEL0 |= BLE_RXSEL_BIT | BLE_TXSEL_BIT;
-	P1SEL1 &= ~(BLE_RXSEL_BIT | BLE_TXSEL_BIT);
-
-	UCA0CTLW0 = UCSWRST;
-	UCA0CTLW0 |= UCSSEL__SMCLK;
-
-	UCA0BRW = 4;
-	UCA0MCTLW = UCOS16 | (5 << 4) | (0x55 << 8);
-	UCA0IFG &= ~UCRXIFG;
-	UCA0CTLW0 &= ~UCSWRST;
-
-	delayMs(10);
-	UCA0IE |= UCRXIE;
-}
-
-static uint8_t bleGetLine(char* out, uint8_t outSize)
-{
-	if (!bleReady[bleR]) return 0;
-	__disable_interrupt();
-
-	uint8_t n = bleLengths[bleR];
-	if (n >= outSize) n = outSize - 1;
-
-	for (uint8_t i = 0; i < n; ++i) out[i] = bleLines[bleR][i];
-	out[n] = '\0';
-
-	bleLengths[bleR] = 0;
-	bleReady[bleR] = 0;
-	bleOverflow[bleR] = 0;
-
-	bleR = (bleR + 1) % BLE_LINE_SLOTS;
-	__enable_interrupt();
-	return 1;
-}
-
-static void blePrintChar(const char c)
-{
-	while (!(UCA0IFG & UCTXIFG));
-	UCA0TXBUF = (uint8_t)c;
-}
-
-static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
-
-static void bleInitSequence(void)
-{
-	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	switch (ack)
-	{
-		case 0:
-			blePrintString("CMD+RESET=0\r\n");
-			break;
-		case 1:
-			blePrintString("CMD+NAME=SmartMoisture\r\n");
-			break;
-		case 2:
-			blePrintString("CMD+RESET=0\r\n");
-			break;
-		case 3:
-			blePrintString("CMD+ADV=1\r\n");
-			break;
-		case 4:
-			blePrintString("CMD+NOTIFY=1\r\n");
-			break;
-		default:
-			break;
-	}
-	delayMs(COMMAND_DELAY);
 }
 
 static void tempStrFromX100(const int tempX100, char* out, const unsigned outSize)
@@ -197,122 +97,6 @@ static void readSensors(SensorSnapshot* s)
 #endif
 }
 
-static uint8_t checksum(const char* s)
-{
-	uint8_t x = 0;
-
-	while (*s) x ^= (uint8_t)*s++;
-	return x;
-}
-
-static int hexNibble(const char c)
-{
-	if (c >= '0' && c <= '9') return c - '0';
-	if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-	if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-
-	return -1;
-}
-
-static uint8_t verifyChecksum(char* cmd)
-{
-	char* star = strchr(cmd, '*');
-	if (!star) return 0;
-
-	if (star[1] == '\0' || star[2] == '\0' || star[3] != '\0') return 0;
-
-	const int hi = hexNibble(star[1]);
-	const int lo = hexNibble(star[2]);
-	if (hi < 0 || lo < 0) return 0;
-	const uint8_t got = (uint8_t)((hi << 4) | lo);
-
-	const char saved = *star;
-	*star = '\0';
-	const uint8_t calc = checksum(cmd);
-	*star = saved;
-
-	if (calc != got) return 0;
-	*star = '\0';
-
-	return 1;
-}
-
-static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
-{
-	const uint16_t s = seq % 1000;
-	seq++;
-
-	static char payload[24];
-	const int n = snprintf(payload, sizeof(payload), "S%03uT%+05dM%04u", s, tempX100, adcRaw);
-	if (n <= 0) return;
-
-	const uint8_t cs = checksum(payload);
-	static char frame[48];
-	const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
-	if (m > 0) blePrintString(frame);
-}
-
-static void handleCommand(char* cmd, const SensorSnapshot* s)
-{
-	if (!verifyChecksum(cmd))
-	{
-		blePrintString("CMD+DATA=0,ERR CS\r\n");
-		return;
-	}
-
-	if (strncmp(cmd, "START", 5) == 0)
-	{
-		samplingEnabled = 1;
-		sampleCountdown = 0;
-
-		blePrintString("CMD+DATA=0,OK START\r\n");
-	}
-	else if (strncmp(cmd, "STOP", 4) == 0)
-	{
-		samplingEnabled = 0;
-		blePrintString("CMD+DATA=0,OK STOP\r\n");
-	}
-	else if (strncmp(cmd, "RATE ", 5) == 0)
-	{
-		int rate = atoi(cmd + 5);
-		if (rate < 1) rate = 1;
-		if (rate > 3600) rate = 3600;
-
-		if (rate > 0)
-		{
-			sampleEveryTicks = (uint16_t)(rate * SAMPLE_TICK_PERIOD);
-			if (sampleCountdown > sampleEveryTicks) sampleCountdown = sampleEveryTicks;
-		}
-		blePrintString("CMD+DATA=0,OK RATE\r\n");
-	}
-	else if (strncmp(cmd, "SEQ ", 4) == 0)
-	{
-		const int newSeq = atoi(cmd + 4);
-		if (newSeq >= 0) seq = (uint16_t)newSeq;
-
-		blePrintString("CMD+DATA=0,OK SEQ\r\n");
-	}
-	else if (strncmp(cmd, "GET", 3) == 0)
-	{
-		char tBuf[12];
-		tempStrFromX100(s->tempX100, tBuf, sizeof(tBuf));
-
-		char response[64];
-		const int n = snprintf(response, sizeof(response), "CMD+DATA=0,OK s:%u,t:%s,m:%u,r:%u\r\n", seq, tBuf,
-		                       s->adcRaw,
-		                       sampleEveryTicks / SAMPLE_TICK_PERIOD);
-		if (n > 0) blePrintString(response);
-	}
-	else if (strncmp(cmd, "RESET", 5) == 0)
-	{
-		bleInitPending = 1;
-		resetCount = 0;
-	}
-	else blePrintString("CMD+DATA=0,ERR CMD\r\n");
-}
-
-#endif
-
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
@@ -339,16 +123,13 @@ int main(void)
 #endif
 
 #if defined(ENABLE_BLE)
-	bleUartInit();
+	bleInit(SAMPLE_TICK_PERIOD);
 #endif
 
 	__enable_interrupt();
 
 #if defined(ENABLE_BLE)
-	BLE_RESET_PORT &= ~BLE_RESET_PIN;
-	delayMs(COMMAND_DELAY);
-	BLE_RESET_PORT |= BLE_RESET_PIN;
-	delayMs(COMMAND_DELAY);
+	bleHardwareReset();
 #endif
 
 #if defined(ENABLE_OLED)
@@ -358,70 +139,27 @@ int main(void)
 
 	while (1)
 	{
-		__bis_SR_register(LPM0_bits | GIE);
+#if defined(ENABLE_BLE)
+		__bis_SR_register(bleSleepModeBits() | GIE);
+#else
+		__bis_SR_register(LPM3_bits | GIE);
+#endif
 
 		SensorSnapshot s;
 		readSensors(&s);
 
 #if defined(ENABLE_BLE)
-		char line[BLE_BUFFER_SIZE];
+		bleProcessRx(&s);
 
-		while (bleGetLine(line, sizeof(line)))
-		{
-			if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11, &s);
-			else if (strncmp(line, "EVT+READY", 9) == 0)
-			{
-				bleConnected = 0;
-				ack = 0;
-				bleInitPending = 1;
-				resetCount = 0;
-			}
-			else if (strncmp(line, "RSP", 3) == 0)
-			{
-				ack++;
-				if (ack > 4) ack = 0;
-			}
-			else if (strncmp(line, "EVT+CON", 7) == 0)
-			{
-				bleConnected = 1;
 #if defined(ENABLE_OLED)
-				oledDrawString(0, 0, "BLE: Connected");
+		if (bleIsConnected()) oledDrawString(0, 0, "BLE: Connected");
+		else oledDrawString(0, 0, "BLE: Ready    ");
 #endif
-			}
-			else if (strncmp(line, "EVT+DISCON", 10) == 0)
-			{
-				bleConnected = 0;
-				ack = 0;
-				bleInitPending = 1;
-				resetCount = BLE_RETRY_TICKS;
-#if defined(ENABLE_OLED)
-				oledDrawString(0, 0, "BLE: Disconnected");
-#endif
-			}
-		}
+
 #endif
 
 		if (!tick) continue;
 		tick--;
-
-#if defined(ENABLE_BLE)
-		if (sampleCountdown) sampleCountdown--;
-
-		if (!bleConnected)
-		{
-			if (resetCount == 0)
-			{
-				resetCount = BLE_RETRY_TICKS;
-				if (bleInitPending) bleInitSequence();
-			}
-			else resetCount--;
-		}
-		else
-		{
-			resetCount = BLE_RETRY_TICKS;
-			bleInitPending = 0;
-		}
-#endif
 
 		if (s.maxFault != 0)
 		{
@@ -440,11 +178,7 @@ int main(void)
 		}
 
 #if defined(ENABLE_BLE)
-		if (bleConnected && samplingEnabled && sampleCountdown == 0)
-		{
-			bleSendMeasurement(s.tempX100, s.adcRaw);
-			sampleCountdown = sampleEveryTicks;
-		}
+		bleOnTick(&s);
 #endif
 
 #if defined(ENABLE_OLED)
@@ -466,85 +200,6 @@ int main(void)
 	}
 }
 
-#if defined(ENABLE_BLE)
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector = USCI_A0_VECTOR __interrupt
-#elif defined(__GNUC__)
-__attribute__((interrupt(USCI_A0_VECTOR)))
-#else
-#error Compiler not supported!
-#endif
-void USCI_A0_ISR(void)
-{
-	switch (__even_in_range(UCA0IV, USCI_UART_UCTXCPTIFG))
-	{
-		case USCI_NONE:
-			break;
-		case USCI_UART_UCRXIFG:
-			{
-				const uint8_t c = (uint8_t)UCA0RXBUF;
-
-				if (c == 0)
-				{
-					__bic_SR_register_on_exit(LPM0_bits);
-					return;
-				}
-
-				if (bleReady[bleW])
-				{
-					uint8_t next = (bleW + 1) % BLE_LINE_SLOTS;
-					if (!bleReady[next])
-					{
-						bleW = next;
-						bleLengths[bleW] = 0;
-						bleOverflow[bleW] = 0;
-					}
-					else
-					{
-						__bic_SR_register_on_exit(LPM0_bits);
-						return;
-					}
-				}
-
-				if (c == '\r' || c == '\n')
-				{
-					if (bleLengths[bleW] > 0)
-					{
-						if (bleLengths[bleW] >= BLE_BUFFER_SIZE) bleLengths[bleW] = BLE_BUFFER_SIZE - 1;
-						bleLines[bleW][bleLengths[bleW]] = '\0';
-						bleReady[bleW] = 1;
-
-						uint8_t next = (bleW + 1) % BLE_LINE_SLOTS;
-						if (!bleReady[next])
-						{
-							bleW = next;
-							bleLengths[bleW] = 0;
-							bleOverflow[bleW] = 0;
-						}
-					}
-					else bleLengths[bleW] = 0;
-
-					__bic_SR_register_on_exit(LPM0_bits);
-					return;
-				}
-
-				if (!bleOverflow[bleW])
-				{
-					if (bleLengths[bleW] < BLE_BUFFER_SIZE - 1) bleLines[bleW][bleLengths[bleW]++] = (char)c;
-					else bleOverflow[bleW] = 1;
-				}
-
-				__bic_SR_register_on_exit(LPM0_bits);
-				break;
-			}
-		case USCI_UART_UCTXIFG:
-		case USCI_UART_UCSTTIFG:
-		case USCI_UART_UCTXCPTIFG: default:
-			break;
-	}
-}
-#endif
-
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector = TIMER0_A0_VECTOR __interrupt
 #elif defined(__GNUC__)
@@ -554,7 +209,8 @@ __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #endif
 void TIMER0_A0_ISR(void)
 {
-	TA0CCR0 += (32768 / SAMPLE_TICK_PERIOD);
+	TA0CCR0 += 32768 / SAMPLE_TICK_PERIOD;
 	if (tick < 255) tick++;
-	__bic_SR_register_on_exit(LPM0_bits);
+
+	__bic_SR_register_on_exit(LPM4_bits);
 }
