@@ -1,10 +1,10 @@
-#include <stdio.h>
 #include <msp430.h>
+#include <stdio.h>
 
+#include "./include/ble.h"
 #include "./include/config.h"
 #include "./include/max.h"
 #include "./include/oled.h"
-#include "./include/ble.h"
 
 #define SAMPLE_TICK_PERIOD 5
 #define UI_UPDATE_TICKS 2

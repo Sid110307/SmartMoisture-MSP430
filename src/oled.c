@@ -261,21 +261,35 @@ void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
 
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {
-	uint8_t x = col;
-	while (*s && x < 128)
+	uint8_t x = col, buf[128], n = 0;
+	while (*s && x <= 128 - 6)
 	{
-		oledDrawChar(x, page, *s++);
+		const uint8_t idx = fontIndexForChar(*s++), *glyph = font5x7[idx];
+
+		buf[n++] = glyph[0];
+		buf[n++] = glyph[1];
+		buf[n++] = glyph[2];
+		buf[n++] = glyph[3];
+		buf[n++] = glyph[4];
+		buf[n++] = 0x00;
+
 		x += 6;
 	}
 
-	const uint8_t zeros[16] = {0};
-	oledSetCursor(x, page);
+	oledSetCursor(col, page);
+	(void)i2cWriteBytes(0x40, buf, n);
 
-	while (x < 128)
+	if (x < 128)
 	{
-		const uint8_t chunk = (uint8_t)(128 - x > sizeof(zeros) ? sizeof(zeros) : 128 - x);
+		static const uint8_t zeros[16] = {0};
+		oledSetCursor(x, page);
 
-		(void)i2cWriteBytes(0x40, zeros, chunk);
-		x += chunk;
+		while (x < 128)
+		{
+			const uint8_t chunk = (uint8_t)(128 - x > sizeof(zeros) ? sizeof(zeros) : 128 - x);
+
+			(void)i2cWriteBytes(0x40, zeros, chunk);
+			x += chunk;
+		}
 	}
 }

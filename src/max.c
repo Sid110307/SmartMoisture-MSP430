@@ -94,7 +94,7 @@ int maxReadRtdTemp(void)
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
 
-	const int R = (int)((int64_t)raw * 43000000 / 32768 - 10000);
+	const int R = (int)(((int64_t)raw * 43000000 / 32768 - 10000) * 100 / 385);
 	return R > 9999 ? 9999 : R < -9999 ? -9999 : R;
 }
 

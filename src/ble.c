@@ -1,9 +1,9 @@
 #include "./include/ble.h"
 
+#include <msp430.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <msp430.h>
 
 #define BLE_BUFFER_SIZE 64
 #define BLE_LINE_SLOTS  2
@@ -87,10 +87,13 @@ static void bleInitSequence(void)
 	{
 		case 0:
 			blePrintString("CMD+RESET=0\r\n");
+		// fallthrough
 		case 1:
 			blePrintString("CMD+NAME=SmartMoisture\r\n");
+		// fallthrough
 		case 2:
 			blePrintString("CMD+RESET=0\r\n");
+		// fallthrough
 		case 3:
 			blePrintString("CMD+ADV=1\r\n");
 			break;
@@ -140,7 +143,14 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 	}
 	else if (strncmp(cmd, "RATE ", 5) == 0)
 	{
-		int rate = atoi(cmd + 5);
+		char* end;
+		long rate = strtol(cmd + 5, &end, 10);
+		if (end == cmd + 5)
+		{
+			blePrintString("CMD+DATA=0,ERR RATE\r\n");
+			return;
+		}
+
 		if (rate < 1) rate = 1;
 		if (rate > 3600) rate = 3600;
 
@@ -152,7 +162,14 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 	}
 	else if (strncmp(cmd, "SEQ ", 4) == 0)
 	{
-		const int newSeq = atoi(cmd + 4);
+		char* end;
+		const long newSeq = strtol(cmd + 4, &end, 10);
+		if (end == cmd + 4)
+		{
+			blePrintString("CMD+DATA=0,ERR SEQ\r\n");
+			return;
+		}
+
 		if (newSeq >= 0) seq = (uint16_t)newSeq;
 		blePrintString("CMD+DATA=0,OK SEQ\r\n");
 	}
