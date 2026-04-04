@@ -14,6 +14,7 @@ static uint8_t uiTicks = 0;
 #endif
 
 static volatile uint8_t tick = 0;
+static SensorSnapshot s;
 
 #if defined(ENABLE_ADC)
 static void adcInit(void)
@@ -48,6 +49,7 @@ static void clockInit(void)
 	CSCTL2 = FLLD_0 | 243;
 
 	__bic_SR_register(SCG0);
+	delayMs(1);
 	CSCTL4 = SELMS__DCOCLKDIV | SELA__REFOCLK;
 }
 
@@ -145,12 +147,8 @@ int main(void)
 		__bis_SR_register(LPM3_bits | GIE);
 #endif
 
-		SensorSnapshot s;
-		readSensors(&s);
-
 #if defined(ENABLE_BLE)
 		bleProcessRx(&s);
-
 #if defined(ENABLE_OLED)
 		if (bleIsConnected()) oledDrawString(0, 0, "BLE: Connected");
 		else oledDrawString(0, 0, "BLE: Ready    ");
@@ -159,6 +157,7 @@ int main(void)
 #endif
 
 		if (!tick) continue;
+		readSensors(&s);
 		tick--;
 
 		if (s.maxFault != 0)
@@ -201,7 +200,8 @@ int main(void)
 }
 
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector = TIMER0_A0_VECTOR __interrupt
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt
 #elif defined(__GNUC__)
 __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #else

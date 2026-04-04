@@ -109,7 +109,7 @@ static void bleInitSequence(void)
 
 static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
 {
-	const uint16_t s = (uint16_t)(seq % 1000);
+	const uint16_t s = seq % 1000;
 	seq++;
 
 	static char payload[24];
@@ -213,7 +213,7 @@ static void bleUartInit(void)
 
 	UCA0CTLW0 = UCSWRST;
 	UCA0CTLW0 |= UCSSEL__SMCLK;
-	UCA0BRW = 4;
+	UCA0BRW = 4; // 115200
 	UCA0MCTLW = UCOS16 | (5 << 4) | (0x55 << 8);
 	UCA0IFG &= ~UCRXIFG;
 	UCA0CTLW0 &= ~UCSWRST;
@@ -234,7 +234,7 @@ void bleInit(uint16_t tickHz)
 {
 	if (tickHz == 0) tickHz = 1;
 	tickHzLocal = tickHz;
-	retryTicks = (uint16_t)(tickHzLocal * 5);
+	retryTicks = tickHzLocal * 5;
 	if (retryTicks == 0) retryTicks = 5;
 
 	resetCount = retryTicks;

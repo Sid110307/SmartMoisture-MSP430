@@ -52,7 +52,7 @@
 static void delayA0(const uint16_t ticks)
 {
 	const uint16_t start = TA0R;
-	while ((uint16_t)(TA0R - start) < ticks);
+	while (TA0R - start < ticks);
 }
 
 static void delayMs(const uint16_t ms)

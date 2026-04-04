@@ -91,10 +91,11 @@ int maxReadRtdTemp(void)
 	t &= ~MAX_CFG_BIAS;
 	maxWriteReg(MAX_REG_CONF, t);
 
+	if (buf[1] & 0x01) return -32768;
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
 
-	const int R = (int)(((int64_t)raw * 43000000 / 32768 - 10000) * 100 / 385);
+	const int R = (int)(((int64_t)raw * 43000000 / 32768 - 10000000) / 385);
 	return R > 9999 ? 9999 : R < -9999 ? -9999 : R;
 }
 
