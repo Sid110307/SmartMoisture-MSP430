@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?>
+<cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+    <storageModule moduleId="org.eclipse.cdt.core.settings">
+        <cconfiguration id="com.ti.ccstudio.buildDefinitions.MSP430.Debug.custom">
+            <storageModule
+                    buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider"
+                    id="com.ti.ccstudio.buildDefinitions.MSP430.Debug.custom"
+                    moduleId="org.eclipse.cdt.core.settings"
+                    name="Debug">
+                <externalSettings/>
+                <extensions>
+                    <extension id="org.eclipse.cdt.core.GmakeErrorParser" point="com.ti.ccs.project.ErrorParser"/>
+                    <extension id="com.ti.ccs.errorparser.CompilerErrorParser_TI"
+                               point="com.ti.ccs.project.ErrorParser"/>
+                </extensions>
+            </storageModule>
+            <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+                <configuration
+                        artifactExtension="out"
+                        artifactName="${ProjName}"
+                        buildProperties=""
+                        cleanCommand="${CG_CLEAN_CMD}"
+                        description=""
+                        id="com.ti.ccstudio.buildDefinitions.MSP430.Debug.custom"
+                        name="Debug"
+                        parent="com.ti.ccstudio.buildDefinitions.MSP430.Debug">
+                    <folderInfo
+                            id="com.ti.ccstudio.buildDefinitions.MSP430.Debug.custom."
+                            name="/"
+                            resourcePath="">
+                        <toolChain
+                                id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.DebugToolchain.custom"
+                                name="TI Build Tools"
+                                superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.DebugToolchain"
+                                targetTool="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerDebug.custom">
+                            <option
+                                    id="com.ti.ccstudio.buildDefinitions.core.OPT_TAGS.custom"
+                                    superClass="com.ti.ccstudio.buildDefinitions.core.OPT_TAGS"
+                                    valueType="stringList">
+                                <listOptionValue value="DEVICE_CONFIGURATION_ID=MSP430FR2433"/>
+                                <listOptionValue value="DEVICE_CORE_ID="/>
+                                <listOptionValue value="DEVICE_ENDIANNESS=little"/>
+                                <listOptionValue value="OUTPUT_FORMAT=ELF"/>
+                                <listOptionValue value="OUTPUT_TYPE=executable"/>
+                            </option>
+                            <targetPlatform
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.targetPlatformDebug.custom"
+                                    name="Platform"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.targetPlatformDebug"/>
+                            <builder
+                                    buildPath="${BuildDirectory}"
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.builderDebug.custom"
+                                    name="GNU Make.Debug"
+                                    parallelBuildOn="true"
+                                    parallelizationNumber="optimal"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.builderDebug"/>
+                            <tool
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.compilerDebug.custom"
+                                    name="MSP430 Compiler"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.compilerDebug">
+                                <option
+                                        id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.DEFINE.custom"
+                                        superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.DEFINE"
+                                        valueType="definedSymbols">
+                                    <listOptionValue value="__MSP430FR2433__"/>
+                                </option>
+                                <option
+                                        id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.INCLUDE_PATH.custom"
+                                        superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.INCLUDE_PATH"
+                                        valueType="includePath">
+                                    <listOptionValue value="${PROJECT_ROOT}"/>
+                                </option>
+                            </tool>
+                            <tool
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerDebug.custom"
+                                    name="MSP430 Linker"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerDebug"/>
+                        </toolChain>
+                    </folderInfo>
+                </configuration>
+            </storageModule>
+            <storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+        </cconfiguration>
+        <cconfiguration id="com.ti.ccstudio.buildDefinitions.MSP430.Release.custom">
+            <storageModule
+                    buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider"
+                    id="com.ti.ccstudio.buildDefinitions.MSP430.Release.custom"
+                    moduleId="org.eclipse.cdt.core.settings"
+                    name="Release">
+                <externalSettings/>
+                <extensions>
+                    <extension id="org.eclipse.cdt.core.GmakeErrorParser" point="com.ti.ccs.project.ErrorParser"/>
+                    <extension id="com.ti.ccs.errorparser.CompilerErrorParser_TI"
+                               point="com.ti.ccs.project.ErrorParser"/>
+                </extensions>
+            </storageModule>
+            <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+                <configuration
+                        artifactExtension="out"
+                        artifactName="${ProjName}"
+                        buildProperties=""
+                        cleanCommand="${CG_CLEAN_CMD}"
+                        description=""
+                        id="com.ti.ccstudio.buildDefinitions.MSP430.Release.custom"
+                        name="Release"
+                        parent="com.ti.ccstudio.buildDefinitions.MSP430.Release">
+                    <folderInfo
+                            id="com.ti.ccstudio.buildDefinitions.MSP430.Release.custom."
+                            name="/"
+                            resourcePath="">
+                        <toolChain
+                                id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.ReleaseToolchain.custom"
+                                name="TI Build Tools"
+                                superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.ReleaseToolchain"
+                                targetTool="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerRelease.custom">
+                            <option
+                                    id="com.ti.ccstudio.buildDefinitions.core.OPT_TAGS.release.custom"
+                                    superClass="com.ti.ccstudio.buildDefinitions.core.OPT_TAGS"
+                                    valueType="stringList">
+                                <listOptionValue value="DEVICE_CONFIGURATION_ID=MSP430FR2433"/>
+                                <listOptionValue value="DEVICE_CORE_ID="/>
+                                <listOptionValue value="DEVICE_ENDIANNESS=little"/>
+                                <listOptionValue value="OUTPUT_FORMAT=ELF"/>
+                                <listOptionValue value="OUTPUT_TYPE=executable"/>
+                            </option>
+                            <targetPlatform
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.targetPlatformRelease.custom"
+                                    name="Platform"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.targetPlatformRelease"/>
+                            <builder
+                                    buildPath="${BuildDirectory}"
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.builderRelease.custom"
+                                    name="GNU Make.Release"
+                                    parallelBuildOn="true"
+                                    parallelizationNumber="optimal"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.builderRelease"/>
+                            <tool
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.compilerRelease.custom"
+                                    name="MSP430 Compiler"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.compilerRelease">
+                                <option
+                                        id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.DEFINE.release.custom"
+                                        superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.DEFINE"
+                                        valueType="definedSymbols">
+                                    <listOptionValue value="__MSP430FR2433__"/>
+                                </option>
+                                <option
+                                        id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.INCLUDE_PATH.release.custom"
+                                        superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.compilerID.INCLUDE_PATH"
+                                        valueType="includePath">
+                                    <listOptionValue value="${PROJECT_ROOT}"/>
+                                </option>
+                            </tool>
+                            <tool
+                                    id="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerRelease.custom"
+                                    name="MSP430 Linker"
+                                    superClass="com.ti.ccstudio.buildDefinitions.MSP430_21.6.exe.linkerRelease"/>
+                        </toolChain>
+                    </folderInfo>
+                </configuration>
+            </storageModule>
+            <storageModule moduleId="org.eclipse.cdt.core.externalSettings"/>
+        </cconfiguration>
+    </storageModule>
+    <storageModule moduleId="cdtBuildSystem" version="4.0.0">
+        <project
+                id="SmartMoisture-MSP430.com.ti.ccstudio.buildDefinitions.MSP430.ProjectType.custom"
+                name="MSP430"
+                projectType="com.ti.ccstudio.buildDefinitions.MSP430.ProjectType"/>
+    </storageModule>
+</cproject>
