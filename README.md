@@ -10,7 +10,7 @@ devices.
 
 - **MCU**: TI MSP430FR2433
 - **Moisture Sensor**: Capacitive soil moisture sensor (HW-101)
-- **Temperature Sensor**: MAX31865 RTD-to-Digital Converter with PT100/PT1000
+- **Temperature Sensor**: MAX31865 RTD-to-Digital Converter with PT100
 - **Display**: SSD1306 OLED Display (128x64)
 - **BLE Module**: nRF52810-based custom BLE Module
 - **Status LED**: Standard LED
