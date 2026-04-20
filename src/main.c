@@ -13,7 +13,7 @@
 static uint8_t uiTicks = 0;
 #endif
 
-static volatile uint8_t tick = 0;
+static volatile uint8_t mainLoopAlive = 0, tick = 0;
 static SensorSnapshot s;
 
 #if defined(ENABLE_ADC)
@@ -56,7 +56,7 @@ static void clockInit(void)
 static void timerInit(void)
 {
 	TA0CTL = TASSEL__ACLK | MC__CONTINUOUS | TACLR;
-	TA0CCR0 = TA0R + (32768 / SAMPLE_TICK_PERIOD);
+	TA0CCR0 = TA0R + (32768U / SAMPLE_TICK_PERIOD);
 	TA0CCTL0 = CCIE;
 	TA0CCTL0 &= ~CCIFG;
 }
@@ -99,6 +99,8 @@ static void readSensors(SensorSnapshot* s)
 #endif
 }
 
+static void enableWatchdog(void) { WDTCTL = WDTPW | WDTCNTCL | WDTSSEL__ACLK | WDTIS__512K; }
+
 int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
@@ -128,6 +130,7 @@ int main(void)
 	bleInit(SAMPLE_TICK_PERIOD);
 #endif
 
+	enableWatchdog();
 	__enable_interrupt();
 
 #if defined(ENABLE_BLE)
@@ -143,9 +146,9 @@ int main(void)
 
 	while (1)
 	{
+		mainLoopAlive = 1;
+
 #if defined(ENABLE_BLE)
-		if (!bleIsConnected())
-			BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 		__bis_SR_register(bleSleepModeBits() | GIE);
 #else
 		__bis_SR_register(LPM3_bits | GIE);
@@ -157,16 +160,19 @@ int main(void)
 		if (bleIsConnected()) oledDrawString(0, 0, "BLE: Connected");
 		else oledDrawString(0, 0, "BLE: Ready    ");
 #endif
-
 #endif
 
 		if (!tick) continue;
-		readSensors(&s);
 		tick--;
+
+#if defined(ENABLE_OLED)
+		oledRetry();
+#endif
+		readSensors(&s);
 
 		if (s.maxFault != 0)
 		{
-			char faultMsg[16];
+			char faultMsg[20];
 			snprintf(faultMsg, sizeof(faultMsg), "MAX: Error (%02X)", s.maxFault);
 
 #if defined(ENABLE_OLED)
@@ -213,8 +219,14 @@ __attribute__((interrupt(TIMER0_A0_VECTOR)))
 #endif
 void TIMER0_A0_ISR(void)
 {
-	TA0CCR0 += 32768 / SAMPLE_TICK_PERIOD;
+	TA0CCR0 += 32768U / SAMPLE_TICK_PERIOD;
 	if (tick < 255) tick++;
+
+	if (mainLoopAlive)
+	{
+		mainLoopAlive = 0;
+		enableWatchdog();
+	}
 
 	LPM4_EXIT;
 }

@@ -31,10 +31,7 @@ static uint8_t spiTransfer(const uint8_t data)
 	UCA1TXBUF = data;
 	while (!(UCA1IFG & UCRXIFG));
 
-	const uint8_t r = UCA1RXBUF;
-	while (UCA1STATW & UCBUSY);
-
-	return r;
+	return UCA1RXBUF;
 }
 
 static void maxReadMulti(const uint8_t start, uint8_t* buf, const uint8_t len)
@@ -51,7 +48,7 @@ static void maxClearFault(void)
 {
 	uint8_t t = maxReadReg(MAX_REG_CONF);
 
-	t &= ~0x2C;
+	t &= ~(MAX_CFG_1SHOT | 0x0C);
 	t |= MAX_CFG_FAULT;
 	maxWriteReg(MAX_REG_CONF, t);
 }

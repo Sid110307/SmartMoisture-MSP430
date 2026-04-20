@@ -26,6 +26,7 @@
 
 #define OLED_ADDR 0x3C
 #define OLED_WAIT 20000
+#define OLED_RETRY_TICKS 5
 
 #define LED_PORT P1OUT
 #define LED_DIR P1DIR
@@ -49,13 +50,13 @@
 #define COMMAND_DELAY 500
 #define FAULT_BLINK_DELAY 250
 
-static void delayA0(const uint16_t ticks)
+static inline void delayA0(const uint16_t ticks)
 {
 	const uint16_t start = TA0R;
 	while (TA0R - start < ticks);
 }
 
-static void delayMs(const uint16_t ms)
+static inline void delayMs(const uint16_t ms)
 {
 	uint32_t ticks = ((uint32_t)ms * 32768UL + 500UL) / 1000UL;
 	while (ticks)

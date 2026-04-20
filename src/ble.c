@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define BLE_BUFFER_SIZE 64
-#define BLE_LINE_SLOTS  2
+#define BLE_LINE_SLOTS 2
 
 static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE];
 static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_SLOTS] = {0, 0},
@@ -25,8 +25,12 @@ static void blePrintString(const char* str) { while (*str) blePrintChar(*str++);
 
 static uint8_t bleGetLine(char* out, uint8_t outSize)
 {
-	if (!bleReady[bleR]) return 0;
 	__disable_interrupt();
+	if (!bleReady[bleR])
+	{
+		__enable_interrupt();
+		return 0;
+	}
 
 	uint8_t n = bleLengths[bleR];
 	if (n >= outSize) n = outSize - 1;
@@ -171,7 +175,7 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 			return;
 		}
 
-		if (newSeq >= 0) seq = (uint16_t)newSeq;
+		if (newSeq >= 0 && newSeq <= 65535) seq = (uint16_t)newSeq;
 		blePrintString("CMD+DATA=0,OK SEQ\r\n");
 	}
 	else if (strncmp(cmd, "GET", 3) == 0)
@@ -269,7 +273,7 @@ void bleProcessRx(const SensorSnapshot* s)
 		else if (strncmp(line, "RSP", 3) == 0)
 		{
 			ack++;
-			if (ack > 4) ack = 0;
+			if (ack > 4) ack = 4;
 		}
 		else if (strncmp(line, "EVT+CON", 7) == 0) bleConnected = 1;
 		else if (strncmp(line, "EVT+DISCON", 10) == 0)

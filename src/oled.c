@@ -103,7 +103,8 @@ static const uint8_t font5x7[][5] = {
 	{0x00, 0x41, 0x36, 0x08, 0x00}, // 0x7D '}'
 	{0x08, 0x04, 0x08, 0x10, 0x08}, // 0x7E '~'
 };
-static volatile uint8_t oledPresent = 1;
+static uint8_t oledPresent = 1;
+static volatile uint16_t oledRetryTicks = 0;
 
 static uint8_t fontIndexForChar(const char c)
 {
@@ -163,6 +164,7 @@ static int i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t le
 	if (!i2cWaitStopClear())
 	{
 		oledPresent = 0;
+		oledRetryTicks = OLED_RETRY_TICKS;
 		i2cRecover();
 
 		return 0;
@@ -172,6 +174,7 @@ static int i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t le
 	if (!i2cWaitTxReady())
 	{
 		oledPresent = 0;
+		oledRetryTicks = OLED_RETRY_TICKS;
 		i2cRecover();
 
 		return 0;
@@ -183,6 +186,7 @@ static int i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t le
 		if (!i2cWaitTxReady())
 		{
 			oledPresent = 0;
+			oledRetryTicks = OLED_RETRY_TICKS;
 			i2cRecover();
 
 			return 0;
@@ -193,6 +197,7 @@ static int i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t le
 	if (!i2cWaitTxReady())
 	{
 		oledPresent = 0;
+		oledRetryTicks = OLED_RETRY_TICKS;
 		i2cRecover();
 
 		return 0;
@@ -202,6 +207,7 @@ static int i2cWriteBytes(const uint8_t control, const uint8_t* data, uint16_t le
 	if (!i2cWaitStopClear())
 	{
 		oledPresent = 0;
+		oledRetryTicks = OLED_RETRY_TICKS;
 		i2cRecover();
 
 		return 0;
@@ -220,7 +226,7 @@ static void oledSetCursor(const uint8_t col, const uint8_t page)
 	(void)i2cWriteBytes(0x00, cmds, 3);
 }
 
-void oledInit(void)
+int oledInit(void)
 {
 	i2cInit();
 
@@ -229,11 +235,38 @@ void oledInit(void)
 		0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0x2E, 0xAF
 	};
 	oledPresent = 1;
-	(void)i2cWriteBytes(0x00, initCmds, sizeof(initCmds));
+
+	if (!i2cWriteBytes(0x00, initCmds, sizeof(initCmds)))
+	{
+		oledPresent = 0;
+		oledRetryTicks = OLED_RETRY_TICKS;
+
+		return 0;
+	}
+	return 1;
+}
+
+void oledRetry(void)
+{
+	if (oledPresent) return;
+	if (oledRetryTicks > 0)
+	{
+		oledRetryTicks--;
+		return;
+	}
+
+	if (oledInit())
+	{
+		oledClear();
+		oledDrawString(0, 0, "BLE: Ready");
+	}
+	else oledRetryTicks = OLED_RETRY_TICKS;
 }
 
 void oledClear(void)
 {
+	if (!oledPresent) return;
+
 	const uint8_t zeros[16] = {0};
 	for (uint8_t page = 0; page < 8; ++page)
 	{
@@ -244,8 +277,9 @@ void oledClear(void)
 
 void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
 {
-	const uint8_t idx = fontIndexForChar(c);
-	const uint8_t* glyph = font5x7[idx];
+	if (!oledPresent) return;
+
+	const uint8_t idx = fontIndexForChar(c), *glyph = font5x7[idx];
 	uint8_t buf[6];
 
 	buf[0] = glyph[0];
@@ -256,11 +290,13 @@ void oledDrawChar(const uint8_t col, const uint8_t page, const char c)
 	buf[5] = 0x00;
 
 	oledSetCursor(col, page);
-	(void)i2cWriteBytes(0x40, buf, 6);
+	(void)i2cWriteBytes(0x40, buf, sizeof(buf));
 }
 
 void oledDrawString(const uint8_t col, const uint8_t page, const char* s)
 {
+	if (!oledPresent) return;
+
 	uint8_t x = col, buf[128], n = 0;
 	while (*s && x <= 128 - 6)
 	{
