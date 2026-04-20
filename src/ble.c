@@ -81,6 +81,7 @@ static uint8_t verifyChecksum(char* cmd)
 
 static void bleInitSequence(void)
 {
+	BLE_PWR_PORT |= BLE_PWR_PIN;
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 
 	switch (ack)
@@ -199,9 +200,9 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 void bleGpioInit(void)
 {
 	BLE_PWR_DIR |= BLE_PWR_PIN;
-	BLE_PWR_PORT |= BLE_PWR_PIN;
+	BLE_PWR_PORT &= ~BLE_PWR_PIN;
 	BLE_WAKE_DIR |= BLE_WAKE_PIN;
-	BLE_WAKE_PORT |= BLE_WAKE_PIN;
+	BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 	BLE_RESET_DIR |= BLE_RESET_PIN;
 	BLE_RESET_PORT |= BLE_RESET_PIN;
 }
@@ -305,6 +306,8 @@ void bleOnTick(const SensorSnapshot* s)
 		bleSendMeasurement(s->tempX100, s->adcRaw);
 		sampleCountdown = sampleEveryTicks;
 	}
+	if (!bleConnected)
+		BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 }
 
 #if defined(ENABLE_BLE)

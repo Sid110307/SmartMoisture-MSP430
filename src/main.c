@@ -131,6 +131,8 @@ int main(void)
 	__enable_interrupt();
 
 #if defined(ENABLE_BLE)
+	BLE_PWR_PORT |= BLE_PWR_PIN;
+	BLE_WAKE_PORT |= BLE_WAKE_PIN;
 	bleHardwareReset();
 #endif
 
@@ -142,6 +144,8 @@ int main(void)
 	while (1)
 	{
 #if defined(ENABLE_BLE)
+		if (!bleIsConnected())
+			BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 		__bis_SR_register(bleSleepModeBits() | GIE);
 #else
 		__bis_SR_register(LPM3_bits | GIE);
