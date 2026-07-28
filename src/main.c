@@ -43,13 +43,13 @@ static uint16_t adcReadRaw(void)
 static void clockInit(void)
 {
 	__bis_SR_register(SCG0);
-
 	CSCTL3 = SELREF__REFOCLK;
 	CSCTL1 = DCOFTRIMEN | DCOFTRIM0 | DCOFTRIM1 | DCORSEL_3;
 	CSCTL2 = FLLD_0 | 243;
-
 	__bic_SR_register(SCG0);
-	delayMs(1);
+
+	do CSCTL7 &= ~(FLLUNLOCK0 | FLLUNLOCK1);
+	while (CSCTL7 & (FLLUNLOCK0 | FLLUNLOCK1));
 	CSCTL4 = SELMS__DCOCLKDIV | SELA__REFOCLK;
 }
 
@@ -136,7 +136,6 @@ int main(void)
 #if defined(ENABLE_BLE)
 	BLE_PWR_PORT |= BLE_PWR_PIN;
 	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-	bleHardwareReset();
 #endif
 
 #if defined(ENABLE_OLED)
@@ -149,7 +148,7 @@ int main(void)
 		mainLoopAlive = 1;
 
 #if defined(ENABLE_BLE)
-		__bis_SR_register(bleSleepModeBits() | GIE);
+		__bis_SR_register(LPM0_bits | GIE);
 #else
 		__bis_SR_register(LPM3_bits | GIE);
 #endif
@@ -178,11 +177,11 @@ int main(void)
 #if defined(ENABLE_OLED)
 			oledDrawString(0, 1, faultMsg);
 #endif
-			LED_PORT ^= LED_PIN;
+			LED_PORT |= LED_PIN;
+			delayMs(FAULT_BLINK_DELAY);
+			LED_PORT &= ~LED_PIN;
 			delayMs(FAULT_BLINK_DELAY);
 
-			maxInit();
-			delayMs(COMMAND_DELAY);
 			continue;
 		}
 

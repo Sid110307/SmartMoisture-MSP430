@@ -93,7 +93,7 @@ int maxReadRtdTemp(void)
 	raw >>= 1;
 
 	const int R = (int)(((int64_t)raw * 43000000 / 32768 - 10000000) / 385);
-	return R > 9999 ? 9999 : R < -9999 ? -9999 : R;
+	return R;
 }
 
 uint8_t maxReadReg(const uint8_t regAddr)

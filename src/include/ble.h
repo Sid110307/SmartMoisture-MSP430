@@ -17,4 +17,3 @@ void bleProcessRx(const SensorSnapshot* s);
 void bleOnTick(const SensorSnapshot* s);
 
 uint8_t bleIsConnected(void);
-uint16_t bleSleepModeBits(void);

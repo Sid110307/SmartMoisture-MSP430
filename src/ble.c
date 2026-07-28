@@ -8,21 +8,32 @@
 #define BLE_BUFFER_SIZE 64
 #define BLE_LINE_SLOTS 2
 
-static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE];
+static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE], txBuffer[BLE_BUFFER_SIZE];
 static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_SLOTS] = {0, 0},
                         bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bleInitPending = 1, ack = 0,
-                        samplingEnabled = 1;
-static uint8_t bleConnected = 0;
+                        samplingEnabled = 1, bleConnected = 0, txHead = 0, txTail = 0;
 static uint16_t tickHzLocal = 1, retryTicks = 5, resetCount = 0, sampleEveryTicks = 1, sampleCountdown = 0, seq = 0;
 
 static void blePrintChar(const char c)
 {
-	while (!(UCA0IFG & UCTXIFG));
-	UCA0TXBUF = (uint8_t)c;
+	uint8_t next = (txHead + 1) % BLE_BUFFER_SIZE;
+	while (next == txTail);
+
+	__disable_interrupt();
+	txBuffer[txHead] = c;
+	txHead = next;
+
+	if (!(UCA0IE & UCTXIE))
+	{
+		UCA0TXBUF = txBuffer[txTail];
+		txTail = (txTail + 1) % BLE_BUFFER_SIZE;
+		UCA0IE |= UCTXIE;
+	}
+	__enable_interrupt();
 }
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
-
+#include "./include/oled.h"
 static uint8_t bleGetLine(char* out, uint8_t outSize)
 {
 	__disable_interrupt();
@@ -108,8 +119,6 @@ static void bleInitSequence(void)
 		default:
 			break;
 	}
-
-	delayMs(COMMAND_DELAY);
 }
 
 static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
@@ -227,14 +236,6 @@ static void bleUartInit(void)
 	UCA0IE |= UCRXIE;
 }
 
-void bleHardwareReset(void)
-{
-	BLE_RESET_PORT &= ~BLE_RESET_PIN;
-	delayMs(COMMAND_DELAY);
-	BLE_RESET_PORT |= BLE_RESET_PIN;
-	delayMs(COMMAND_DELAY);
-}
-
 void bleInit(uint16_t tickHz)
 {
 	if (tickHz == 0) tickHz = 1;
@@ -255,7 +256,6 @@ void bleInit(uint16_t tickHz)
 }
 
 uint8_t bleIsConnected(void) { return bleConnected; }
-uint16_t bleSleepModeBits(void) { return bleConnected ? LPM0_bits : LPM3_bits; }
 
 void bleProcessRx(const SensorSnapshot* s)
 {
@@ -279,8 +279,6 @@ void bleProcessRx(const SensorSnapshot* s)
 		else if (strncmp(line, "EVT+DISCON", 10) == 0)
 		{
 			bleConnected = 0;
-			ack = 0;
-			bleInitPending = 1;
 			resetCount = retryTicks;
 		}
 	}
@@ -310,8 +308,6 @@ void bleOnTick(const SensorSnapshot* s)
 		bleSendMeasurement(s->tempX100, s->adcRaw);
 		sampleCountdown = sampleEveryTicks;
 	}
-	if (!bleConnected)
-		BLE_WAKE_PORT &= ~BLE_WAKE_PIN;
 }
 
 #if defined(ENABLE_BLE)
@@ -387,6 +383,17 @@ void USCI_A0_ISR(void)
 				break;
 			}
 		case USCI_UART_UCTXIFG:
+			{
+				if (txHead != txTail)
+				{
+					UCA0TXBUF = txBuffer[txTail];
+					txTail = (txTail + 1) % BLE_BUFFER_SIZE;
+				}
+				else UCA0IE &= ~UCTXIE;
+
+				LPM4_EXIT;
+				break;
+			}
 		case USCI_UART_UCSTTIFG:
 		case USCI_UART_UCTXCPTIFG:
 		default:
