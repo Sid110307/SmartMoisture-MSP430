@@ -25,13 +25,24 @@ static void csHigh(void)
 	MAX_CS_PORT |= MAX_CS_PIN;
 }
 
+#define SPI_POLL_TIMEOUT 2000U
+
 static uint8_t spiTransfer(const uint8_t data)
 {
-	while (!(UCA1IFG & UCTXIFG));
+	uint16_t t = SPI_POLL_TIMEOUT;
+	while (!(UCA1IFG & UCTXIFG)) if (--t == 0) return 0xFF;
 	UCA1TXBUF = data;
-	while (!(UCA1IFG & UCRXIFG));
+
+	t = SPI_POLL_TIMEOUT;
+	while (!(UCA1IFG & UCRXIFG)) if (--t == 0) return 0xFF;
 
 	return UCA1RXBUF;
+}
+
+static void spiWaitIdle(void)
+{
+	uint16_t t = SPI_POLL_TIMEOUT;
+	while ((UCA1STATW & UCBUSY) && --t);
 }
 
 static void maxReadMulti(const uint8_t start, uint8_t* buf, const uint8_t len)
@@ -40,7 +51,7 @@ static void maxReadMulti(const uint8_t start, uint8_t* buf, const uint8_t len)
 	spiTransfer(start & 0x7F);
 	for (uint8_t i = 0; i < len; ++i) buf[i] = spiTransfer(0x00);
 
-	while (UCA1STATW & UCBUSY);
+	spiWaitIdle();
 	csHigh();
 }
 
@@ -102,7 +113,7 @@ uint8_t maxReadReg(const uint8_t regAddr)
 	spiTransfer(regAddr & 0x7F);
 	const uint8_t value = spiTransfer(0x00);
 
-	while (UCA1STATW & UCBUSY);
+	spiWaitIdle();
 	csHigh();
 
 	return value;
@@ -114,6 +125,6 @@ void maxWriteReg(const uint8_t regAddr, const uint8_t value)
 	spiTransfer(0x80 | (regAddr & 0x7F));
 	spiTransfer(value);
 
-	while (UCA1STATW & UCBUSY);
+	spiWaitIdle();
 	csHigh();
 }

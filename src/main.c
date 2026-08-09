@@ -105,6 +105,7 @@ int main(void)
 {
 	WDTCTL = WDTPW | WDTHOLD;
 	PM5CTL0 &= ~LOCKLPM5;
+	const uint16_t resetCause = SYSRSTIV;
 
 	clockInit();
 	timerInit();
@@ -115,7 +116,14 @@ int main(void)
 	oledClear();
 	oledDrawString(0, 3, "  SmartMoisture v2.0");
 	oledDrawString(0, 4, "  Indriya Sensotech");
+
+	char rstMsg[20];
+	snprintf(rstMsg, sizeof(rstMsg), "  Last reset: %04X", resetCause);
+	oledDrawString(0, 6, rstMsg);
+
 	delayMs(600);
+#else
+	(void)resetCause;
 #endif
 
 #if defined(ENABLE_MAX)
@@ -156,8 +164,15 @@ int main(void)
 #if defined(ENABLE_BLE)
 		bleProcessRx(&s);
 #if defined(ENABLE_OLED)
-		if (bleIsConnected()) oledDrawString(0, 0, "BLE: Connected");
-		else oledDrawString(0, 0, "BLE: Ready    ");
+		{
+			static uint8_t lastConn = 0xFF;
+			const uint8_t nowConn = bleIsConnected() ? 1 : 0;
+			if (nowConn != lastConn)
+			{
+				lastConn = nowConn;
+				oledDrawString(0, 0, nowConn ? "BLE: Connected" : "BLE: Ready    ");
+			}
+		}
 #endif
 #endif
 

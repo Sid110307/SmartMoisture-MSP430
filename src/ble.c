@@ -17,7 +17,9 @@ static uint16_t tickHzLocal = 1, retryTicks = 5, resetCount = 0, sampleEveryTick
 static void blePrintChar(const char c)
 {
 	uint8_t next = (txHead + 1) % BLE_BUFFER_SIZE;
-	while (next == txTail);
+
+	uint16_t guard = 60000U;
+	while (next == txTail) if (--guard == 0) return;
 
 	__disable_interrupt();
 	txBuffer[txHead] = c;
