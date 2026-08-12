@@ -94,8 +94,8 @@ static void readSensors(SensorSnapshot* s)
 #endif
 
 #if defined(ENABLE_MAX)
+	s->tempX100 = maxReadRtdTemp();
 	s->maxFault = maxReadReg(MAX_REG_FAULT);
-	if (s->maxFault == 0) s->tempX100 = maxReadRtdTemp();
 #endif
 }
 

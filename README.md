@@ -61,13 +61,13 @@ devices.
 BLE data (from nRF52810) comes in the form:
 
 ```
-SsssTttttMmmmm*HH\r\n
+SsssT+ttttMmmmm*HH\r\n
 ```
 
-where `Ssss` is the sequence number, `Ttttt` is the temperature read in Celsius * 100, `Mmmmm` is the raw ADC value of
+where `Ssss` is the sequence number, `T+tttt` is the temperature read in Celsius * 100 (signed), `Mmmmm` is the raw ADC value of
 the soil moisture sensor, and `HH` is the data's XORed checksum.
 
-Example: `S0001T0234M1023*5A\r\n` indicates sequence 1, temperature 23.4°C, and soil moisture reading of 1023.
+Example: `S0001T+0234M1023*5A\r\n` indicates sequence 1, temperature 23.4°C, and soil moisture reading of 1023.
 
 Default sampling rate is every 1 second.
 The BLE device's pairing pin is `123456`.

@@ -10,9 +10,9 @@
 
 static volatile char bleLines[BLE_LINE_SLOTS][BLE_BUFFER_SIZE], txBuffer[BLE_BUFFER_SIZE];
 static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_SLOTS] = {0, 0},
-                        bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bleInitPending = 1, ack = 0,
+                        bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bootSent = 0, named = 0, txpwrSet = 0,
                         samplingEnabled = 1, bleConnected = 0, txHead = 0, txTail = 0;
-static uint16_t tickHzLocal = 1, retryTicks = 5, resetCount = 0, sampleEveryTicks = 1, sampleCountdown = 0, seq = 0;
+static uint16_t tickHzLocal = 1, bootDelayTicks = 5, resetCount = 0, sampleEveryTicks = 1, sampleCountdown = 0, seq = 0;
 
 static void blePrintChar(const char c)
 {
@@ -94,33 +94,6 @@ static uint8_t verifyChecksum(char* cmd)
 	*star = '\0';
 
 	return 1;
-}
-
-static void bleInitSequence(void)
-{
-	BLE_PWR_PORT |= BLE_PWR_PIN;
-	BLE_WAKE_PORT |= BLE_WAKE_PIN;
-
-	switch (ack)
-	{
-		case 0:
-			blePrintString("CMD+RESET=0\r\n");
-		// fallthrough
-		case 1:
-			blePrintString("CMD+NAME=SmartMoisture\r\n");
-		// fallthrough
-		case 2:
-			blePrintString("CMD+RESET=0\r\n");
-		// fallthrough
-		case 3:
-			blePrintString("CMD+ADV=1\r\n");
-			break;
-		case 4:
-			blePrintString("CMD+NOTIFY=1\r\n");
-			break;
-		default:
-			break;
-	}
 }
 
 static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
@@ -206,8 +179,9 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 	}
 	else if (strncmp(cmd, "RESET", 5) == 0)
 	{
-		bleInitPending = 1;
-		resetCount = 0;
+		named = 0;
+		txpwrSet = 0;
+		blePrintString("CMD+RESET=0\r\n");
 	}
 	else blePrintString("CMD+DATA=0,ERR CMD\r\n");
 }
@@ -242,16 +216,17 @@ void bleInit(uint16_t tickHz)
 {
 	if (tickHz == 0) tickHz = 1;
 	tickHzLocal = tickHz;
-	retryTicks = tickHzLocal * 5;
-	if (retryTicks == 0) retryTicks = 5;
+	bootDelayTicks = tickHzLocal * 2;
+	if (bootDelayTicks == 0) bootDelayTicks = 2;
 
-	resetCount = retryTicks;
+	resetCount = bootDelayTicks;
 	sampleEveryTicks = tickHzLocal;
 	sampleCountdown = 0;
 
 	bleConnected = 0;
-	ack = 0;
-	bleInitPending = 1;
+	bootSent = 0;
+	named = 0;
+	txpwrSet = 0;
 	samplingEnabled = 1;
 
 	bleUartInit();
@@ -268,41 +243,34 @@ void bleProcessRx(const SensorSnapshot* s)
 		else if (strncmp(line, "EVT+READY", 9) == 0)
 		{
 			bleConnected = 0;
-			ack = 0;
-			bleInitPending = 1;
-			resetCount = 0;
-		}
-		else if (strncmp(line, "RSP", 3) == 0)
-		{
-			ack++;
-			if (ack > 4) ack = 4;
+			if (!named)
+			{
+				named = 1;
+				blePrintString("CMD+NAME=SmartMoisture\r\n");
+				blePrintString("CMD+RESET=0\r\n");
+			}
+			else if (!txpwrSet)
+			{
+				txpwrSet = 1;
+				blePrintString("CMD+TXPWR=-8\r\n");
+			}
 		}
 		else if (strncmp(line, "EVT+CON", 7) == 0) bleConnected = 1;
-		else if (strncmp(line, "EVT+DISCON", 10) == 0)
-		{
-			bleConnected = 0;
-			resetCount = retryTicks;
-		}
+		else if (strncmp(line, "EVT+DISCON", 10) == 0) bleConnected = 0;
 	}
 }
 
 void bleOnTick(const SensorSnapshot* s)
 {
 	if (sampleCountdown) sampleCountdown--;
-
-	if (!bleConnected)
+	if (!bootSent)
 	{
 		if (resetCount == 0)
 		{
-			resetCount = retryTicks;
-			if (bleInitPending) bleInitSequence();
+			bootSent = 1;
+			blePrintString("CMD+RESET=0\r\n");
 		}
 		else resetCount--;
-	}
-	else
-	{
-		resetCount = retryTicks;
-		bleInitPending = 0;
 	}
 
 	if (bleConnected && samplingEnabled && sampleCountdown == 0)
