@@ -64,13 +64,23 @@ BLE data (from nRF52810) comes in the form:
 SsssT+ttttMmmmm*HH\r\n
 ```
 
-where `Ssss` is the sequence number, `T+tttt` is the temperature read in Celsius * 100 (signed), `Mmmmm` is the raw ADC value of
-the soil moisture sensor, and `HH` is the data's XORed checksum.
+where `Ssss` is the sequence number (mod 1000), `T+tttt` is the temperature in Celsius x 100 (signed), `Mmmmm` is the raw soil-moisture ADC value (0..1023, mean of 16 samples) and `HH` is the XOR checksum of the payload.
 
-Example: `S0001T+0234M1023*5A\r\n` indicates sequence 1, temperature 23.4°C, and soil moisture reading of 1023.
+Example: `S0001T+0234M1023*5A\r\n` is sequence 1, temperature 23.4 C, soil moisture 1023.
 
-Default sampling rate is every 1 second.
-The BLE device's pairing pin is `123456`.
+When the temperature probe has a problem the moisture value is still sent, together with the reason, instead of a normal frame:
+
+| Frame | Meaning |
+| ----- | ------- |
+| `ERR RTD 80;M1:0512` | MAX31865 fault register value (see table below) |
+| `ERR RTD INVALID;M1:0512` | converter flagged the reading (open input) |
+| `ERR TEMP RANGE;M1:0512` | resistance outside the PT100 table, -50..150 C (probe open or shorted) |
+
+Default sampling rate is every 1 second. The BLE device's pairing pin is `123456`; change it in the nRF module configuration for deployed units.
+
+### Temperature
+
+The RTD resistance (430 ohm reference) is converted with an integer IEC 60751 PT100 table, linear between 10 C points (error below 0.01 C). Moisture keeps the old 0..1023 scale, so existing calibrations stay valid.
 
 ### Commands
 
@@ -78,12 +88,14 @@ The BLE device's pairing pin is `123456`.
 |---------|-----------------------------------|------------------|--------------------------|
 | START   | Start periodic sampling           | `START*HH\r\n`   | `OK START\r\n`           |
 | STOP    | Stop periodic sampling            | `STOP*HH\r\n`    | `OK STOP\r\n`            |
-| RATE n  | Set sampling rate to n seconds    | `RATE 30*HH\r\n` | `OK RATE\r\n`            |
-| SEQ n   | Set sequence number to n          | `SEQ 42*HH\r\n`  | `OK SEQ\r\n`             |
-| GET     | Get most recent sample and config | `GET*HH\r\n`     | `S123T+2450M1023*5A\r\n` |
-| RESET   | Reset the BLE module              | `RESET*HH\r\n`   | No response              |
+| RATE n  | Set sampling rate to n seconds (1..3600) | `RATE 30*HH\r\n` | `OK RATE\r\n`    |
+| SEQ n   | Set sequence number to n (0..65535) | `SEQ 42*HH\r\n`  | `OK SEQ\r\n`             |
+| GET     | Latest sample and rate            | `GET*HH\r\n`     | `OK s:123 t:24.50 m:1023 r:1\r\n` |
+| INFO    | Firmware version, uptime, last reset cause, last fault byte | `INFO*HH\r\n` | `OK fw:2.0 up:93 rst:0002 flt:00 smp:1\r\n` |
+| PING    | Link check                        | `PING*HH\r\n`    | `OK PONG\r\n`            |
+| RESET   | Reset the BLE module              | `RESET*HH\r\n`   | `CMD+RESET=0`            |
 
-Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string.
+Include `*HH\r\n` at the end of each command, where `HH` is the XORed checksum of the command string. Errors: `ERR CS` (bad checksum), `ERR CMD`, `ERR RATE`, `ERR SEQ`, `ERR LEN` (command too long).
 
 ## Feature Flags
 

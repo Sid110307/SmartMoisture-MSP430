@@ -3,6 +3,8 @@
 #include <msp430.h>
 #include "./types.h"
 
+#define FW_VERSION "2.0"
+
 // #define ENABLE_OLED // Comment to disable I2C OLED display
 #define ENABLE_BLE // Comment to disable BLE device
 #define ENABLE_ADC // Comment to disable ADC moisture reading

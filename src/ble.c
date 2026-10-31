@@ -13,6 +13,9 @@ static volatile uint8_t bleLengths[BLE_LINE_SLOTS] = {0, 0}, bleReady[BLE_LINE_S
                         bleOverflow[BLE_LINE_SLOTS] = {0, 0}, bleW = 0, bleR = 0, bootSent = 0, named = 0, txpwrSet = 0,
                         samplingEnabled = 1, bleConnected = 0, txHead = 0, txTail = 0;
 static uint16_t tickHzLocal = 1, bootDelayTicks = 5, resetCount = 0, sampleEveryTicks = 1, sampleCountdown = 0, seq = 0;
+static uint16_t resetCauseVal = 0, uptimeTicks = 0;
+static uint32_t uptimeS = 0;
+static uint8_t lastTempState = 0, lastFault = 0;
 
 static void blePrintChar(const char c)
 {
@@ -36,7 +39,7 @@ static void blePrintChar(const char c)
 
 static void blePrintString(const char* str) { while (*str) blePrintChar(*str++); }
 #include "./include/oled.h"
-static uint8_t bleGetLine(char* out, uint8_t outSize)
+static uint8_t bleGetLine(char* out, uint8_t outSize, uint8_t* overflow)
 {
 	__disable_interrupt();
 	if (!bleReady[bleR])
@@ -51,6 +54,7 @@ static uint8_t bleGetLine(char* out, uint8_t outSize)
 	for (uint8_t i = 0; i < n; ++i) out[i] = bleLines[bleR][i];
 	out[n] = '\0';
 
+	*overflow = bleOverflow[bleR];
 	bleLengths[bleR] = 0;
 	bleReady[bleR] = 0;
 	bleOverflow[bleR] = 0;
@@ -96,6 +100,30 @@ static uint8_t verifyChecksum(char* cmd)
 	return 1;
 }
 
+static int tokenIs(const char* cmd, const char* word)
+{
+	const size_t n = strlen(word);
+	return strncmp(cmd, word, n) == 0 && (cmd[n] == '\0' || cmd[n] == ' ');
+}
+
+static void fmtTemp(char* buf, const size_t size, const int x100)
+{
+	const int a = x100 < 0 ? -x100 : x100;
+	snprintf(buf, size, "%s%d.%02d", x100 < 0 ? "-" : "", a / 100, a % 100);
+}
+
+static void bleSendFault(const SensorSnapshot* s)
+{
+	char what[12];
+	if (s->tempState == TEMP_FAULT) snprintf(what, sizeof(what), "RTD %02X", s->maxFault);
+	else if (s->tempState == TEMP_INVALID) snprintf(what, sizeof(what), "RTD INVALID");
+	else snprintf(what, sizeof(what), "TEMP RANGE");
+
+	char frame[48];
+	const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,ERR %s;M1:%04u\r\n", what, s->adcRaw);
+	if (m > 0) blePrintString(frame);
+}
+
 static void bleSendMeasurement(const int tempX100, const uint16_t adcRaw)
 {
 	const uint16_t s = seq % 1000;
@@ -119,22 +147,22 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 		return;
 	}
 
-	if (strncmp(cmd, "START", 5) == 0)
+	if (tokenIs(cmd, "START"))
 	{
 		samplingEnabled = 1;
 		sampleCountdown = 0;
 		blePrintString("CMD+DATA=0,OK START\r\n");
 	}
-	else if (strncmp(cmd, "STOP", 4) == 0)
+	else if (tokenIs(cmd, "STOP"))
 	{
 		samplingEnabled = 0;
 		blePrintString("CMD+DATA=0,OK STOP\r\n");
 	}
-	else if (strncmp(cmd, "RATE ", 5) == 0)
+	else if (tokenIs(cmd, "RATE"))
 	{
 		char* end;
-		long rate = strtol(cmd + 5, &end, 10);
-		if (end == cmd + 5)
+		long rate = strtol(cmd + 4, &end, 10);
+		if (end == cmd + 4 || *end != '\0')
 		{
 			blePrintString("CMD+DATA=0,ERR RATE\r\n");
 			return;
@@ -149,35 +177,40 @@ static void handleCommand(char* cmd, const SensorSnapshot* s)
 		if (sampleCountdown > sampleEveryTicks) sampleCountdown = sampleEveryTicks;
 		blePrintString("CMD+DATA=0,OK RATE\r\n");
 	}
-	else if (strncmp(cmd, "SEQ ", 4) == 0)
+	else if (tokenIs(cmd, "SEQ"))
 	{
 		char* end;
 		const long newSeq = strtol(cmd + 4, &end, 10);
-		if (end == cmd + 4)
+		if (end == cmd + 4 || *end != '\0' || newSeq < 0 || newSeq > 65535)
 		{
 			blePrintString("CMD+DATA=0,ERR SEQ\r\n");
 			return;
 		}
 
-		if (newSeq >= 0 && newSeq <= 65535) seq = (uint16_t)newSeq;
+		seq = (uint16_t)newSeq;
 		blePrintString("CMD+DATA=0,OK SEQ\r\n");
 	}
-	else if (strncmp(cmd, "GET", 3) == 0)
+	else if (tokenIs(cmd, "GET"))
 	{
-		char payload[24];
-		const int n = snprintf(payload, sizeof(payload), "S%03uT%+05dM%04u", seq, s->tempX100, s->adcRaw);
-		if (n <= 0)
+		char temp[10], frame[64];
+		fmtTemp(temp, sizeof(temp), s->tempX100);
+		if (s->tempState != TEMP_OK) blePrintString("CMD+DATA=0,ERR RTD INVALID\r\n");
+		else
 		{
-			blePrintString("CMD+DATA=0,ERR GET\r\n");
-			return;
+			const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,OK s:%u t:%s m:%u r:%u\r\n", seq % 1000, temp,
+			                       s->adcRaw, sampleEveryTicks / tickHzLocal);
+			if (m > 0) blePrintString(frame);
 		}
-
-		const uint8_t cs = checksum(payload);
-		char frame[48];
-		const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,%s*%02X\r\n", payload, cs);
+	}
+	else if (tokenIs(cmd, "INFO"))
+	{
+		char frame[72];
+		const int m = snprintf(frame, sizeof(frame), "CMD+DATA=0,OK fw:%s up:%lu rst:%04X flt:%02X smp:%u\r\n", FW_VERSION,
+		                       (unsigned long)uptimeS, resetCauseVal, lastFault, samplingEnabled);
 		if (m > 0) blePrintString(frame);
 	}
-	else if (strncmp(cmd, "RESET", 5) == 0)
+	else if (tokenIs(cmd, "PING")) blePrintString("CMD+DATA=0,OK PONG\r\n");
+	else if (tokenIs(cmd, "RESET"))
 	{
 		named = 0;
 		txpwrSet = 0;
@@ -212,6 +245,8 @@ static void bleUartInit(void)
 	UCA0IE |= UCRXIE;
 }
 
+void bleSetResetCause(const uint16_t cause) { resetCauseVal = cause; }
+
 void bleInit(uint16_t tickHz)
 {
 	if (tickHz == 0) tickHz = 1;
@@ -237,9 +272,11 @@ uint8_t bleIsConnected(void) { return bleConnected; }
 void bleProcessRx(const SensorSnapshot* s)
 {
 	char line[BLE_BUFFER_SIZE];
-	while (bleGetLine(line, sizeof(line)))
+	uint8_t overflow = 0;
+	while (bleGetLine(line, sizeof(line), &overflow))
 	{
-		if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11, s);
+		if (overflow && strncmp(line, "EVT+DATA=0,", 11) == 0) blePrintString("CMD+DATA=0,ERR LEN\r\n");
+		else if (strncmp(line, "EVT+DATA=0,", 11) == 0) handleCommand(line + 11, s);
 		else if (strncmp(line, "EVT+READY", 9) == 0)
 		{
 			bleConnected = 0;
@@ -262,6 +299,13 @@ void bleProcessRx(const SensorSnapshot* s)
 
 void bleOnTick(const SensorSnapshot* s)
 {
+	lastTempState = s->tempState;
+	lastFault = s->maxFault;
+	if (++uptimeTicks >= tickHzLocal)
+	{
+		uptimeTicks = 0;
+		uptimeS++;
+	}
 	if (sampleCountdown) sampleCountdown--;
 	if (!bootSent)
 	{
@@ -275,7 +319,8 @@ void bleOnTick(const SensorSnapshot* s)
 
 	if (bleConnected && samplingEnabled && sampleCountdown == 0)
 	{
-		bleSendMeasurement(s->tempX100, s->adcRaw);
+		if (s->tempState == TEMP_OK) bleSendMeasurement(s->tempX100, s->adcRaw);
+		else bleSendFault(s);  /* the app shows what is wrong instead of silently freezing */
 		sampleCountdown = sampleEveryTicks;
 	}
 }

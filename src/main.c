@@ -74,6 +74,7 @@ static void gpioInit(void)
 #endif
 }
 
+#if defined(ENABLE_OLED)
 static void tempStrFromX100(const int tempX100, char* out, const unsigned outSize)
 {
 	const int w = tempX100 / 100;
@@ -82,20 +83,33 @@ static void tempStrFromX100(const int tempX100, char* out, const unsigned outSiz
 	if (f < 0) f = -f;
 	snprintf(out, outSize, "%d.%02d", w, f);
 }
+#endif
 
 static void readSensors(SensorSnapshot* s)
 {
 	s->tempX100 = 0;
 	s->adcRaw = 0;
 	s->maxFault = 0;
+	s->tempState = TEMP_OK;
 
 #if defined(ENABLE_ADC)
-	s->adcRaw = adcReadRaw();
+	{
+		/* 16-sample mean: same 0..1023 scale as before, much less noise */
+		uint16_t sum = 0;
+		for (uint8_t i = 0; i < 16; ++i) sum += adcReadRaw();
+		s->adcRaw = (sum + 8) >> 4;
+	}
 #endif
 
 #if defined(ENABLE_MAX)
-	s->tempX100 = maxReadRtdTemp();
-	s->maxFault = maxReadReg(MAX_REG_FAULT);
+	{
+		const int t = maxReadRtdTemp();
+		s->maxFault = maxReadReg(MAX_REG_FAULT);
+		if (s->maxFault != 0) s->tempState = TEMP_FAULT;
+		else if (t == MAX_TEMP_INVALID) s->tempState = TEMP_INVALID;
+		else if (t == MAX_TEMP_RANGE) s->tempState = TEMP_RANGE;
+		else s->tempX100 = t;
+	}
 #endif
 }
 
@@ -122,8 +136,6 @@ int main(void)
 	oledDrawString(0, 6, rstMsg);
 
 	delayMs(600);
-#else
-	(void)resetCause;
 #endif
 
 #if defined(ENABLE_MAX)
@@ -136,6 +148,7 @@ int main(void)
 
 #if defined(ENABLE_BLE)
 	bleInit(SAMPLE_TICK_PERIOD);
+	bleSetResetCause(resetCause);
 #endif
 
 	enableWatchdog();
@@ -184,21 +197,18 @@ int main(void)
 #endif
 		readSensors(&s);
 
-		if (s.maxFault != 0)
+		/* A temperature fault no longer stops the loop: the moisture value and the error are still reported. */
+		if (s.tempState != TEMP_OK) LED_PORT |= LED_PIN;
+		else LED_PORT &= ~LED_PIN;
+
+#if defined(ENABLE_OLED)
+		if (s.tempState != TEMP_OK)
 		{
 			char faultMsg[20];
 			snprintf(faultMsg, sizeof(faultMsg), "MAX: Error (%02X)", s.maxFault);
-
-#if defined(ENABLE_OLED)
 			oledDrawString(0, 1, faultMsg);
-#endif
-			LED_PORT |= LED_PIN;
-			delayMs(FAULT_BLINK_DELAY);
-			LED_PORT &= ~LED_PIN;
-			delayMs(FAULT_BLINK_DELAY);
-
-			continue;
 		}
+#endif
 
 #if defined(ENABLE_BLE)
 		bleOnTick(&s);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(SmartMoisture-MSP430 C)
 
-set(FLASHER "C:/Progra~1/TI/UniFlash_9.3.0/dslite.bat")
+set(FLASHER "/opt/ti/uniflash/dslite.sh")
 set(MCU "${MSP430_MCU}")
 
 file(GLOB SRC_FILES "src/*.c")

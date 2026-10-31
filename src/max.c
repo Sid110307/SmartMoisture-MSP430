@@ -1,5 +1,12 @@
 #include "./include/max.h"
 
+#define PT100_POINTS 21
+#define PT100_FIRST_C (-50)
+static const uint16_t PT100_TABLE[PT100_POINTS] = {
+	8031, 8427, 8822, 9216, 9609, 10000, 10390, 10779, 11167, 11554, 11940,
+	12324, 12708, 13090, 13471, 13851, 14229, 14607, 14983, 15358, 15733
+};
+
 static void spiInit(void)
 {
 	P2SEL0 |= BIT4 | BIT5 | BIT6;
@@ -99,12 +106,20 @@ int maxReadRtdTemp(void)
 	t &= ~MAX_CFG_BIAS;
 	maxWriteReg(MAX_REG_CONF, t);
 
-	if (buf[1] & 0x01) return -32768;
+	if (buf[1] & 0x01) return MAX_TEMP_INVALID;
 	uint16_t raw = ((uint16_t)buf[0] << 8) | buf[1];
 	raw >>= 1;
 
-	const int R = (int)(((int64_t)raw * 43000000 / 32768 - 10000000) / 385);
-	return R;
+	/* R in 0.01 ohm for a 430 ohm reference: raw * 43000 / 32768. */
+	const uint32_t r = ((uint32_t)raw * 43000UL) >> 15;
+	if (r < PT100_TABLE[0] || r > PT100_TABLE[PT100_POINTS - 1]) return MAX_TEMP_RANGE;
+
+	/* IEC 60751 table, linear between 10 C points (error below 0.01 C). */
+	uint8_t i = 0;
+	while (i < PT100_POINTS - 2 && r >= PT100_TABLE[i + 1]) ++i;
+	const uint32_t span = PT100_TABLE[i + 1] - PT100_TABLE[i];
+	const int base = (int)(PT100_FIRST_C + 10 * (int)i) * 100;
+	return base + (int)(((r - PT100_TABLE[i]) * 1000UL) / span);
 }
 
 uint8_t maxReadReg(const uint8_t regAddr)
